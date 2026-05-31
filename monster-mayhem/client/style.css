@@ -26,3 +26,16 @@
 .player2-edge {
     background-color: rgba(0, 0, 255, 0.2);
 }
+
+/* Selected monster highlight */
+.selected {
+    outline: 3px solid yellow;
+    outline-offset: -3px;
+    z-index: 1;
+}
+
+/* Valid move destination highlight */
+.valid-move {
+    background-color: rgba(0, 255, 0, 0.3) !important;
+    cursor: pointer;
+}

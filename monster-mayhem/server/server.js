@@ -44,14 +44,25 @@ io.on('connection', (socket) => {
     });
 
     socket.on('placeMonster', ({ gameId, row, col, type, playerIndex }) => {
-    const game = games[gameId];
-    if (!game) return;
+        const game = games[gameId];
+        if (!game) return;
 
-    // Broadcast the placement to the OTHER player
-    socket.to(gameId).emit('monsterPlaced', { row, col, type, playerIndex });
+        // Broadcast the placement to the OTHER player
+        socket.to(gameId).emit('monsterPlaced', { row, col, type, playerIndex });
 
-    console.log(`Player ${playerIndex} placed ${type} at (${row}, ${col})`);
-});
+        console.log(`Player ${playerIndex} placed ${type} at (${row}, ${col})`);
+    });
+
+    socket.on('moveMonster', ({ gameId, fromRow, fromCol, toRow, toCol, playerIndex }) => {
+        const game = games[gameId];
+        if (!game) return;
+
+        // Broadcast the move to the other player
+        socket.to(gameId).emit('monsterMoved', { fromRow, fromCol, toRow, toCol });
+
+        console.log(`Player ${playerIndex} moved from (${fromRow},${fromCol}) to (${toRow},${toCol})`);
+    });
+
 
 });
 
