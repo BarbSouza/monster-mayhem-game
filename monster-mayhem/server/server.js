@@ -63,6 +63,28 @@ io.on('connection', (socket) => {
         console.log(`Player ${playerIndex} moved from (${fromRow},${fromCol}) to (${toRow},${toCol})`);
     });
 
+    socket.on('endTurn', ({ gameId, playerIndex }) => {
+        const game = games[gameId];
+        if (!game) return;
+
+        // Track who has ended their turn this round
+        if (!game.turnEnded) game.turnEnded = [];
+        
+        // Avoid counting the same player twice
+        if (!game.turnEnded.includes(playerIndex)) {
+            game.turnEnded.push(playerIndex);
+        }
+
+        console.log(`Player ${playerIndex} ended their turn in game ${gameId}`);
+
+        // If all players have ended their turn, start a new round
+        if (game.turnEnded.length === game.players.length) {
+            game.turnEnded = []; // Reset for next round
+            io.to(gameId).emit('newRound');
+            console.log(`New round started in game ${gameId}`);
+        }
+    });
+
 
 });
 

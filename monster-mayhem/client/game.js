@@ -336,3 +336,27 @@ socket.on('monsterMoved', ({ fromRow, fromCol, toRow, toCol }) => {
     renderCell(toRow, toCol);
     setStatus('Opponent moved a monster!');
 });
+
+function endTurn() {
+    // Reset this player's turn state
+    placedThisTurn = false;
+    movedThisTurn = [];
+    selectedCell = null;
+    selectedMonster = null;
+    clearHighlights();
+
+    // Tell the server this player has ended their turn
+    socket.emit('endTurn', { gameId: currentGameId, playerIndex: myPlayerIndex });
+
+    setStatus('Turn ended - waiting for opponent...');
+}
+
+// Server tells us both players have ended their turn - new round begins
+socket.on('newRound', () => {
+    placedThisTurn = false;
+    movedThisTurn = [];
+    selectedCell = null;
+    selectedMonster = null;
+    clearHighlights();
+    setStatus('New round! Place or move your monsters.');
+});
