@@ -6,7 +6,6 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<body>
     <div id="lobby">
         <h1>Monster Mayhem</h1>
         <input type="text" id="playerName" placeholder="Enter your name" />
@@ -17,11 +16,20 @@
 
     <div id="game" style="display:none">
         <h2 id="gameInfo"></h2>
+        
+        <div id="controls">
+            <p>Select a monster to place on your edge:</p>
+            <button onclick="selectMonster('vampire')">🧛 Vampire</button>
+            <button onclick="selectMonster('werewolf')">🐺 Werewolf</button>
+            <button onclick="selectMonster('ghost')">👻 Ghost</button>
+            <button onclick="selectMonster(null)">❌ Cancel</button>
+            <p id="statusText">Waiting for game to start...</p>
+        </div>
+
         <div id="board"></div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="game.js"></script>
-</body>
 </body>
 </html>

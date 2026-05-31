@@ -42,6 +42,17 @@ io.on('connection', (socket) => {
         io.to(gameId).emit('playerJoined', { players: game.players });
         console.log(`${playerName} joined game ${gameId}`);
     });
+
+    socket.on('placeMonster', ({ gameId, row, col, type, playerIndex }) => {
+    const game = games[gameId];
+    if (!game) return;
+
+    // Broadcast the placement to the OTHER player
+    socket.to(gameId).emit('monsterPlaced', { row, col, type, playerIndex });
+
+    console.log(`Player ${playerIndex} placed ${type} at (${row}, ${col})`);
+});
+
 });
 
 server.listen(PORT, () => {
