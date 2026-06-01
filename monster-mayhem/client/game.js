@@ -464,3 +464,22 @@ function quickJoin(gameId) {
     if (!name) return alert('Enter your name first!');
     socket.emit('joinGame', { playerName: name, gameId });
 }
+
+function backToLobby() {
+    // Reset all game state
+    currentGameId = null;
+    myPlayerIndex = null;
+    selectedMonster = null;
+    selectedCell = null;
+    placedThisTurn = false;
+    myTurnEnded = false;
+    movedThisTurn = [];
+    boardState = Array.from({ length: 10 }, () => Array(10).fill(null));
+
+    // Re-enable all buttons in case game ended
+    document.querySelectorAll('#controls button').forEach(btn => btn.disabled = false);
+
+    // Switch views
+    document.getElementById('game').style.display = 'none';
+    document.getElementById('lobby').style.display = 'block';
+}
