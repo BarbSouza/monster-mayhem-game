@@ -363,6 +363,19 @@ socket.on('newRound', ({ boardState: serverBoard }) => {
         }
     }
 
+        // Show combat results to the player
+    if (combatLog && combatLog.length > 0) {
+        for (const fight of combatLog) {
+            if (fight.removed === 'both') {
+                setStatus(`⚔️ Both monsters at (${fight.row},${fight.col}) were destroyed!`);
+            } else {
+                setStatus(`⚔️ ${fight.survived} survived at (${fight.row},${fight.col}), ${fight.removed} was removed!`);
+            }
+        }
+    } else {
+        setStatus('New round! Place or move your monsters.');
+    }
+
     placedThisTurn = false;
     movedThisTurn = [];
     selectedCell = null;
