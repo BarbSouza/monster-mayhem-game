@@ -37,6 +37,9 @@ let selectedCell = null;
 // Track which monsters have already been moved this turn
 let movedThisTurn = [];
 
+// Flag to prevent multiple end turn actions
+let myTurnEnded = false;
+
 // Monster emojis for display
 const MONSTERS = {
     vampire: '🧛',
@@ -338,49 +341,50 @@ socket.on('monsterMoved', ({ fromRow, fromCol, toRow, toCol }) => {
 });
 
 function endTurn() {
-    // Reset this player's turn state
+    if (myTurnEnded) {
+        setStatus('You already ended your turn, waiting for opponent...');
+        return;
+    }
+
     placedThisTurn = false;
     movedThisTurn = [];
     selectedCell = null;
     selectedMonster = null;
     clearHighlights();
+    myTurnEnded = true;
 
-    // Tell the server this player has ended their turn
     socket.emit('endTurn', { gameId: currentGameId, playerIndex: myPlayerIndex });
-
     setStatus('Turn ended - waiting for opponent...');
 }
 
 // Server tells us both players have ended their turn - new round begins
-socket.on('newRound', ({ boardState: serverBoard, combatLog, losses }) => {
-    // Replace local board with the server's authoritative state
+socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesPlayed }) => {
+    // Reset turn ended flag for new round
+    myTurnEnded = false;
+
     boardState = serverBoard;
-    
-    // Re-render every cell
+
     for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
             renderCell(row, col);
         }
     }
 
-        // Update loss counters on screen
     if (losses) {
         document.getElementById('losses-0').textContent = losses[0];
         document.getElementById('losses-1').textContent = losses[1];
     }
 
-        // Update games played counter
     if (totalGamesPlayed !== undefined) {
         updateStatsDisplay(totalGamesPlayed, null);
     }
 
-        // Show combat results to the player
     if (combatLog && combatLog.length > 0) {
         for (const fight of combatLog) {
             if (fight.removed === 'both') {
                 setStatus(`⚔️ Both monsters at (${fight.row},${fight.col}) were destroyed!`);
             } else {
-                setStatus(`⚔️ ${fight.survived} survived at (${fight.row},${fight.col}), ${fight.removed} was removed!`);
+                setStatus(`⚔️ ${fight.survived} survived, ${fight.removed} was removed!`);
             }
         }
     } else {
@@ -392,26 +396,22 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses }) => {
     selectedCell = null;
     selectedMonster = null;
     clearHighlights();
-    setStatus('New round! Place or move your monsters.');
 });
 
-socket.on('gameOver', ({ winner, losses }) => {
-    // Update loss display one final time
+socket.on('gameOver', ({ winner, losses, totalGamesPlayed, playerStats }) => {
     document.getElementById('losses-0').textContent = losses[0];
     document.getElementById('losses-1').textContent = losses[1];
 
-    // Update stats display with final numbers
+    // Update stats with final numbers
     const myStats = playerStats[myPlayerIndex];
     updateStatsDisplay(totalGamesPlayed, myStats);
 
-    // Show win or loss message
     if (winner === myPlayerIndex) {
-        setStatus(`🏆 You win! Your opponent lost ${losses[winner === 0 ? 1 : 0]} monsters.`);
+        setStatus(`🏆 You win! Total games played: ${totalGamesPlayed}`);
     } else {
-        setStatus(`💀 You lose! You lost ${losses[myPlayerIndex]} monsters.`);
+        setStatus(`💀 You lose! Total games played: ${totalGamesPlayed}`);
     }
 
-    // Disable all buttons so no more moves can be made
     document.querySelectorAll('#controls button').forEach(btn => btn.disabled = true);
 });
 

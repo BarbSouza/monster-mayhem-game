@@ -312,13 +312,6 @@ io.on('connection', (socket) => {
                 totalGamesPlayed: stats.totalGamesPlayed
             });
 
-            // Send new round with losses and combat log
-            io.to(gameId).emit('newRound', { 
-                boardState: game.boardState,
-                combatLog,
-                losses: game.losses
-            });
-
             console.log(`New round started in game ${gameId}`);
         }
     });
