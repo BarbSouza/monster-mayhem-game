@@ -78,12 +78,17 @@ socket.on('playerJoined', ({ players }) => {
     playerNames[0] = players[0].name;
     if (players[1]) playerNames[1] = players[1].name;
     updateScoreboard();
+
+    // Both players are in - unlock controls
+    setControlsLocked(false);
+    setStatus('Game started! Place or move your monsters.');
+    document.getElementById('gameInfo').textContent = `Game: ${currentGameId}`;
 });
 
 // Build the 10x10 grid
 function buildBoard() {
     const board = document.getElementById('board');
-    board.innerHTML = ''; // Clear any existing board
+    board.innerHTML = '';
 
     for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
@@ -92,18 +97,31 @@ function buildBoard() {
             cell.dataset.row = row;
             cell.dataset.col = col;
 
-            // Player 1 owns the top row (row 0)
-            // Player 2 owns the bottom row (row 9)
             if (row === 0) cell.classList.add('player1-edge');
             if (row === 9) cell.classList.add('player2-edge');
 
-            // Click handler for placing/moving monsters
             cell.addEventListener('click', () => onCellClick(row, col));
-
             board.appendChild(cell);
         }
     }
+
+    // Lock controls until the second player joins
+    setControlsLocked(true);
 }
+
+    function setControlsLocked(locked) {
+        // Lock or unlock all monster buttons and end turn
+        // Keep back to lobby always enabled
+        const buttons = document.querySelectorAll('#controls button:not([onclick="backToLobby()"])');
+        buttons.forEach(btn => btn.disabled = locked);
+
+        // Also prevent clicking the board
+        document.getElementById('board').style.pointerEvents = locked ? 'none' : 'auto';
+
+        if (locked) {
+            setStatus('Waiting for opponent to join...');
+        }
+    }
 
 function onCellClick(row, col) {
     // If a monster type is selected, try to place it
