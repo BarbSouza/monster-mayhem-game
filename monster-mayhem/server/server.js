@@ -41,28 +41,29 @@ function resolveAllCombat(boardState) {
         for (let col = 0; col < 10; col++) {
             const cell = boardState[row][col];
 
-            // Only care about cells with two monsters
-            // Two monsters on same square are stored as { type, player, challenger }
-            // We handle this by checking if a cell has a pending challenger
             if (cell && cell.challenger) {
                 const winner = resolveCombat(cell.type, cell.challenger.type);
 
                 if (winner === 'type1') {
-                    // Original monster wins, remove challenger
+                    // Original wins
                     combatLog.push({
                         row, col,
                         removed: cell.challenger.type,
                         survived: cell.type,
-                        player: cell.player
+                        survivorPlayer: cell.player,
+                        player: cell.challenger.player,
+                        challengerPlayer: cell.challenger.player
                     });
                     delete cell.challenger;
                 } else if (winner === 'type2') {
-                    // Challenger wins, replace original
+                    // Challenger wins
                     combatLog.push({
                         row, col,
                         removed: cell.type,
                         survived: cell.challenger.type,
-                        player: cell.challenger.player
+                        survivorPlayer: cell.challenger.player,
+                        player: cell.player,
+                        challengerPlayer: cell.challenger.player
                     });
                     boardState[row][col] = cell.challenger;
                 } else {
@@ -70,7 +71,9 @@ function resolveAllCombat(boardState) {
                     combatLog.push({
                         row, col,
                         removed: 'both',
-                        survived: null
+                        survived: null,
+                        player: cell.player,
+                        challengerPlayer: cell.challenger.player
                     });
                     boardState[row][col] = null;
                 }
@@ -97,7 +100,9 @@ io.on('connection', (socket) => {
             status: 'waiting',
             // Server holds the authoritative board state
             boardState: Array.from({ length: 10 }, () => Array(10).fill(null)),
-            turnEnded: []
+            turnEnded: [],
+            // Track how many monsters each player has lost
+            losses: [0, 0]
         };
         socket.join(gameId);
         socket.emit('gameCreated', { gameId });
@@ -184,21 +189,61 @@ io.on('connection', (socket) => {
 
         console.log(`Player ${playerIndex} ended their turn in game ${gameId}`);
 
-        // When all players have ended their turn, sync board and start new round
         if (game.turnEnded.length === game.players.length) {
             game.turnEnded = [];
-        // Resolve combat before sending new round
-        const combatLog = resolveAllCombat(game.boardState);
 
-        if (combatLog.length > 0) {
-            console.log('Combat resolved:', combatLog);
-        }
+            // Resolve combat
+            const combatLog = resolveAllCombat(game.boardState);
 
-        // Send board + combat log to all players
-        io.to(gameId).emit('newRound', { 
-            boardState: game.boardState,
-            combatLog
-        });
+            // Count losses from combat log
+            for (const fight of combatLog) {
+                if (fight.removed === 'both') {
+                    // Both players lose a monster
+                    game.losses[fight.player] += 1;
+                    // The challenger's player also loses one
+                    game.losses[fight.challengerPlayer] += 1;
+                } else {
+                    // The loser's player loses a monster
+                    const losingPlayer = fight.player === fight.survivorPlayer 
+                        ? (fight.player === 0 ? 1 : 0)
+                        : fight.player;
+                    game.losses[losingPlayer] += 1;
+                }
+            }
+
+            console.log(`Losses - Player 0: ${game.losses[0]}, Player 1: ${game.losses[1]}`);
+
+            // Check for elimination
+            const eliminated = [];
+            for (let i = 0; i < game.players.length; i++) {
+                if (game.losses[i] >= 10) {
+                    eliminated.push(i);
+                    console.log(`Player ${i} has been eliminated!`);
+                }
+            }
+
+            // Check for a winner - if only one player is not eliminated
+            const activePlayers = game.players.filter((_, i) => !eliminated.includes(i));
+
+            if (activePlayers.length === 1) {
+                // We have a winner!
+                const winnerIndex = game.players.indexOf(activePlayers[0]);
+                io.to(gameId).emit('gameOver', { 
+                    winner: winnerIndex,
+                    losses: game.losses
+                });
+                game.status = 'finished';
+                console.log(`Player ${winnerIndex} wins game ${gameId}!`);
+                return;
+            }
+
+            // Send new round with losses and combat log
+            io.to(gameId).emit('newRound', { 
+                boardState: game.boardState,
+                combatLog,
+                losses: game.losses
+            });
+
             console.log(`New round started in game ${gameId}`);
         }
     });

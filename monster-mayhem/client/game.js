@@ -352,7 +352,7 @@ function endTurn() {
 }
 
 // Server tells us both players have ended their turn - new round begins
-socket.on('newRound', ({ boardState: serverBoard }) => {
+socket.on('newRound', ({ boardState: serverBoard, combatLog, losses }) => {
     // Replace local board with the server's authoritative state
     boardState = serverBoard;
     
@@ -361,6 +361,12 @@ socket.on('newRound', ({ boardState: serverBoard }) => {
         for (let col = 0; col < 10; col++) {
             renderCell(row, col);
         }
+    }
+
+        // Update loss counters on screen
+    if (losses) {
+        document.getElementById('losses-0').textContent = losses[0];
+        document.getElementById('losses-1').textContent = losses[1];
     }
 
         // Show combat results to the player
@@ -382,4 +388,20 @@ socket.on('newRound', ({ boardState: serverBoard }) => {
     selectedMonster = null;
     clearHighlights();
     setStatus('New round! Place or move your monsters.');
+});
+
+socket.on('gameOver', ({ winner, losses }) => {
+    // Update loss display one final time
+    document.getElementById('losses-0').textContent = losses[0];
+    document.getElementById('losses-1').textContent = losses[1];
+
+    // Show win or loss message
+    if (winner === myPlayerIndex) {
+        setStatus(`🏆 You win! Your opponent lost ${losses[winner === 0 ? 1 : 0]} monsters.`);
+    } else {
+        setStatus(`💀 You lose! You lost ${losses[myPlayerIndex]} monsters.`);
+    }
+
+    // Disable all buttons so no more moves can be made
+    document.querySelectorAll('#controls button').forEach(btn => btn.disabled = true);
 });
