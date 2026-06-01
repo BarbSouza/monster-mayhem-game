@@ -276,7 +276,7 @@ function getValidMoves(fromRow, fromCol) {
 
             if (cellContent) {
                 if (cellContent.player === piece.player) {
-                    break;
+                    continue; // Can move through own monsters
                 } else {
                     validMoves.push({ row: newRow, col: newCol });
                     break;
