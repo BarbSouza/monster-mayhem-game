@@ -40,6 +40,9 @@ let movedThisTurn = [];
 // Flag to prevent multiple end turn actions
 let myTurnEnded = false;
 
+// Store player names
+let playerNames = ['Player 1', 'Player 2'];
+
 // Monster emojis for display
 const MONSTERS = {
     vampire: '🧛',
@@ -51,6 +54,7 @@ const MONSTERS = {
 socket.on('gameCreated', (data) => {
     currentGameId = data.gameId;
     myPlayerIndex = 0;
+    playerNames[0] = document.getElementById('playerName').value;
     alert(`Game created! Share this code: ${data.gameId}`);
     document.getElementById('lobby').style.display = 'none';
     document.getElementById('game').style.display = 'block';
@@ -61,11 +65,19 @@ socket.on('gameCreated', (data) => {
 // Called when we successfully join a game
 socket.on('gameJoined', (data) => {
     currentGameId = data.gameId;
-    myPlayerIndex = 1; // Joiner is always player 1
+    myPlayerIndex = 1;
+    playerNames[1] = document.getElementById('playerName').value;
     document.getElementById('lobby').style.display = 'none';
     document.getElementById('game').style.display = 'block';
     document.getElementById('gameInfo').textContent = `Joined Game: ${data.gameId}`;
     buildBoard();
+});
+
+// When the other player joins, update their name on the scoreboard
+socket.on('playerJoined', ({ players }) => {
+    playerNames[0] = players[0].name;
+    if (players[1]) playerNames[1] = players[1].name;
+    updateScoreboard();
 });
 
 // Build the 10x10 grid
@@ -390,8 +402,7 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesP
     }
 
     if (losses) {
-        document.getElementById('losses-0').textContent = losses[0];
-        document.getElementById('losses-1').textContent = losses[1];
+        updateScoreboard(losses);
     }
 
     if (totalGamesPlayed !== undefined) {
@@ -418,8 +429,7 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesP
 });
 
 socket.on('gameOver', ({ winner, losses, totalGamesPlayed, playerStats }) => {
-    document.getElementById('losses-0').textContent = losses[0];
-    document.getElementById('losses-1').textContent = losses[1];
+    updateScoreboard(losses);
 
     // Update stats with final numbers
     const myStats = playerStats[myPlayerIndex];
@@ -503,4 +513,17 @@ function backToLobby() {
     // Switch views
     document.getElementById('game').style.display = 'none';
     document.getElementById('lobby').style.display = 'block';
+}
+
+function updateScoreboard(losses) {
+    const l0 = losses ? losses[0] : 0;
+    const l1 = losses ? losses[1] : 0;
+    document.getElementById('losses-0').textContent = l0;
+    document.getElementById('losses-1').textContent = l1;
+
+    // Update labels with actual names
+    const p0label = document.querySelector('#scoreboard p:first-child');
+    const p1label = document.querySelector('#scoreboard p:last-child');
+    if (p0label) p0label.innerHTML = `🔴 ${playerNames[0]} losses: <span id="losses-0">${l0}</span>/10`;
+    if (p1label) p1label.innerHTML = `🔵 ${playerNames[1]} losses: <span id="losses-1">${l1}</span>/10`;
 }

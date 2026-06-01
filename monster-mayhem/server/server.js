@@ -143,10 +143,16 @@ io.on('connection', (socket) => {
             losses: [0, 0]
         };
 
-        // Initialise stats for this player
-        if (!stats.playerStats[socket.id]) {
-            stats.playerStats[socket.id] = { wins: 0, losses: 0, name: playerName };
+    // Initialise stats by player name instead of socket id
+        if (!stats.playerStats[playerName]) {
+            stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
         }
+
+        socket.emit('statsUpdate', {
+            totalGamesPlayed: stats.totalGamesPlayed,
+            myStats: stats.playerStats[playerName],
+            opponentStats: null
+        });
 
         socket.join(gameId);
         socket.emit('gameCreated', { gameId });
@@ -176,12 +182,18 @@ io.on('connection', (socket) => {
         socket.join(gameId);
         game.status = 'active';
 
-        // Initialise stats for both players if not already set
+        // Initialise stats for both players by name
         for (const player of game.players) {
-            if (!stats.playerStats[player.id]) {
-                stats.playerStats[player.id] = { wins: 0, losses: 0, name: player.name };
+            if (!stats.playerStats[player.name]) {
+                stats.playerStats[player.name] = { wins: 0, losses: 0, name: player.name };
             }
         }
+
+        io.to(gameId).emit('statsUpdate', {
+            totalGamesPlayed: stats.totalGamesPlayed,
+            myStats: stats.playerStats[game.players[0].name],
+            opponentStats: stats.playerStats[game.players[1].name]
+        });
 
         socket.emit('gameJoined', { gameId });
         io.to(gameId).emit('playerJoined', { players: game.players });
@@ -313,12 +325,12 @@ io.on('connection', (socket) => {
                 console.log(`Game ${gameId} ended in a tie!`);
 
                 io.to(gameId).emit('gameOver', {
-                    winner: null, // null means tie
+                    winner: null,
                     losses: game.losses,
                     totalGamesPlayed: stats.totalGamesPlayed,
                     playerStats: {
-                        0: stats.playerStats[game.players[0].id],
-                        1: stats.playerStats[game.players[1].id]
+                        0: stats.playerStats[game.players[0].name],
+                        1: stats.playerStats[game.players[1].name]
                     }
                 });
 
@@ -329,26 +341,23 @@ io.on('connection', (socket) => {
             if (activePlayers.length === 1) {
                 const winnerIndex = game.players.indexOf(activePlayers[0]);
                 
-                // Update global game count
                 stats.totalGamesPlayed += 1;
 
-                // Update winner and loser stats
                 for (let i = 0; i < game.players.length; i++) {
-                    const playerId = game.players[i].id;
+                    const playerName = game.players[i].name;
 
-                    // Initialise if not already set
-                    if (!stats.playerStats[playerId]) {
-                        stats.playerStats[playerId] = { 
+                    if (!stats.playerStats[playerName]) {
+                        stats.playerStats[playerName] = { 
                             wins: 0, 
                             losses: 0, 
-                            name: game.players[i].name 
+                            name: playerName
                         };
                     }
 
                     if (i === winnerIndex) {
-                        stats.playerStats[playerId].wins += 1;
+                        stats.playerStats[playerName].wins += 1;
                     } else {
-                        stats.playerStats[playerId].losses += 1;
+                        stats.playerStats[playerName].losses += 1;
                     }
                 }
 
@@ -359,8 +368,8 @@ io.on('connection', (socket) => {
                     losses: game.losses,
                     totalGamesPlayed: stats.totalGamesPlayed,
                     playerStats: {
-                        0: stats.playerStats[game.players[0].id],
-                        1: stats.playerStats[game.players[1].id]
+                        0: stats.playerStats[game.players[0].name],
+                        1: stats.playerStats[game.players[1].name]
                     }
                 });
 
