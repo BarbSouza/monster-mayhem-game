@@ -158,7 +158,6 @@ function selectMonster(type) {
 }
 
 function placeMonster(row, col) {
-    // Player 1 can only place on row 0, player 2 on row 9
     const myEdge = myPlayerIndex === 0 ? 0 : 9;
 
     if (row !== myEdge) {
@@ -171,11 +170,26 @@ function placeMonster(row, col) {
         return;
     }
 
-    // Place the monster locally
+    // Count how many monsters this player currently has on the board
+    let monsterCount = 0;
+    for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+            const cell = boardState[r][c];
+            if (cell && cell.player === myPlayerIndex) {
+                monsterCount++;
+            }
+        }
+    }
+
+    // Maximum 10 monsters on the board at once
+    if (monsterCount >= 10) {
+        setStatus('You already have 10 monsters on the board!');
+        return;
+    }
+
     boardState[row][col] = { type: selectedMonster, player: myPlayerIndex };
     renderCell(row, col);
 
-    // Tell the server
     socket.emit('placeMonster', {
         gameId: currentGameId,
         row,
@@ -229,6 +243,11 @@ function getValidMoves(fromRow, fromCol) {
     const validMoves = [];
     const piece = boardState[fromRow][fromCol];
 
+    // Define which row is off limits for this player
+    // Player 0 cannot move to row 9 (opponent's edge)
+    // Player 1 cannot move to row 0 (opponent's edge)
+    const forbiddenRow = piece.player === 0 ? 9 : 0;
+
     const directions = [
         { dr: 0, dc: 1, diagonal: false },
         { dr: 0, dc: -1, diagonal: false },
@@ -250,20 +269,20 @@ function getValidMoves(fromRow, fromCol) {
             // Stop if out of bounds
             if (newRow < 0 || newRow > 9 || newCol < 0 || newCol > 9) break;
 
+            // Cannot move to opponent's edge row
+            if (newRow === forbiddenRow) break;
+
             const cellContent = boardState[newRow][newCol];
 
             if (cellContent) {
                 if (cellContent.player === piece.player) {
-                    // Own monster blocks - cannot pass through or land here
                     break;
                 } else {
-                    // Enemy monster - can land on it (combat) but cannot pass through
                     validMoves.push({ row: newRow, col: newCol });
                     break;
                 }
             }
 
-            // Empty cell - valid move
             validMoves.push({ row: newRow, col: newCol });
         }
     }
