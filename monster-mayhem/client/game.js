@@ -425,7 +425,9 @@ socket.on('gameOver', ({ winner, losses, totalGamesPlayed, playerStats }) => {
     const myStats = playerStats[myPlayerIndex];
     updateStatsDisplay(totalGamesPlayed, myStats);
 
-    if (winner === myPlayerIndex) {
+    if (winner === null) {
+        setStatus(`🤝 It's a tie! Both players lost 10 monsters.`);
+    } else if (winner === myPlayerIndex) {
         setStatus(`🏆 You win! Total games played: ${totalGamesPlayed}`);
     } else {
         setStatus(`💀 You lose! Total games played: ${totalGamesPlayed}`);

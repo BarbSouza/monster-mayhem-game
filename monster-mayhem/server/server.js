@@ -306,6 +306,26 @@ io.on('connection', (socket) => {
             // Check for a winner - if only one player is not eliminated
             const activePlayers = game.players.filter((_, i) => !eliminated.includes(i));
 
+            // All players eliminated at the same time - it's a tie!
+            if (activePlayers.length === 0) {
+                stats.totalGamesPlayed += 1;
+
+                console.log(`Game ${gameId} ended in a tie!`);
+
+                io.to(gameId).emit('gameOver', {
+                    winner: null, // null means tie
+                    losses: game.losses,
+                    totalGamesPlayed: stats.totalGamesPlayed,
+                    playerStats: {
+                        0: stats.playerStats[game.players[0].id],
+                        1: stats.playerStats[game.players[1].id]
+                    }
+                });
+
+                game.status = 'finished';
+                return;
+            }
+
             if (activePlayers.length === 1) {
                 const winnerIndex = game.players.indexOf(activePlayers[0]);
                 
