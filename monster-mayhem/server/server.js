@@ -11,6 +11,13 @@ const PORT = 3000;
 
 const games = {};
 
+// Global stats - shared across all games
+const stats = {
+    totalGamesPlayed: 0,
+    // Player stats stored by socket id
+    playerStats: {}
+};
+
 // Combat resolution rules
 // Returns which monster survives, or null if both are removed
 function resolveCombat(type1, type2) {
@@ -98,14 +105,26 @@ io.on('connection', (socket) => {
         games[gameId] = {
             players: [{ id: socket.id, name: playerName }],
             status: 'waiting',
-            // Server holds the authoritative board state
             boardState: Array.from({ length: 10 }, () => Array(10).fill(null)),
             turnEnded: [],
-            // Track how many monsters each player has lost
             losses: [0, 0]
         };
+
+        // Initialise stats for this player
+        if (!stats.playerStats[socket.id]) {
+            stats.playerStats[socket.id] = { wins: 0, losses: 0, name: playerName };
+        }
+
         socket.join(gameId);
         socket.emit('gameCreated', { gameId });
+
+        // Send current stats to creator
+        socket.emit('statsUpdate', {
+            totalGamesPlayed: stats.totalGamesPlayed,
+            myStats: stats.playerStats[socket.id],
+            opponentStats: null
+        });
+
         console.log(`Game ${gameId} created by ${playerName}`);
     });
 
@@ -116,8 +135,25 @@ io.on('connection', (socket) => {
         
         game.players.push({ id: socket.id, name: playerName });
         socket.join(gameId);
+        game.status = 'active';
+
+        // Initialise stats for both players if not already set
+        for (const player of game.players) {
+            if (!stats.playerStats[player.id]) {
+                stats.playerStats[player.id] = { wins: 0, losses: 0, name: player.name };
+            }
+        }
+
         socket.emit('gameJoined', { gameId });
         io.to(gameId).emit('playerJoined', { players: game.players });
+
+        // Send current stats to both players
+        io.to(gameId).emit('statsUpdate', {
+            totalGamesPlayed: stats.totalGamesPlayed,
+            myStats: stats.playerStats[game.players[0].id],
+            opponentStats: stats.playerStats[game.players[1].id]
+        });
+
         console.log(`${playerName} joined game ${gameId}`);
     });
 
@@ -226,16 +262,55 @@ io.on('connection', (socket) => {
             const activePlayers = game.players.filter((_, i) => !eliminated.includes(i));
 
             if (activePlayers.length === 1) {
-                // We have a winner!
                 const winnerIndex = game.players.indexOf(activePlayers[0]);
+                
+                // Update global game count
+                stats.totalGamesPlayed += 1;
+
+                // Update winner and loser stats
+                for (let i = 0; i < game.players.length; i++) {
+                    const playerId = game.players[i].id;
+
+                    // Initialise if not already set
+                    if (!stats.playerStats[playerId]) {
+                        stats.playerStats[playerId] = { 
+                            wins: 0, 
+                            losses: 0, 
+                            name: game.players[i].name 
+                        };
+                    }
+
+                    if (i === winnerIndex) {
+                        stats.playerStats[playerId].wins += 1;
+                    } else {
+                        stats.playerStats[playerId].losses += 1;
+                    }
+                }
+
+                console.log(`Total games played: ${stats.totalGamesPlayed}`);
+
                 io.to(gameId).emit('gameOver', { 
                     winner: winnerIndex,
-                    losses: game.losses
+                    losses: game.losses,
+                    totalGamesPlayed: stats.totalGamesPlayed,
+                    playerStats: {
+                        0: stats.playerStats[game.players[0].id],
+                        1: stats.playerStats[game.players[1].id]
+                    }
                 });
+
                 game.status = 'finished';
                 console.log(`Player ${winnerIndex} wins game ${gameId}!`);
                 return;
             }
+
+            // Also send updated stats with every new round
+            io.to(gameId).emit('newRound', { 
+                boardState: game.boardState,
+                combatLog,
+                losses: game.losses,
+                totalGamesPlayed: stats.totalGamesPlayed
+            });
 
             // Send new round with losses and combat log
             io.to(gameId).emit('newRound', { 

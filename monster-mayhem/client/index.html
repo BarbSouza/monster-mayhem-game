@@ -8,6 +8,11 @@
 <body>
     <div id="lobby">
         <h1>Monster Mayhem</h1>
+
+        <div id="lobby-stats">
+            <p>🎮 Total Games Played: <span id="lobby-total-games">0</span></p>
+        </div>        
+
         <input type="text" id="playerName" placeholder="Enter your name" />
         <button onclick="createGame()">Create Game</button>
         <button onclick="joinGame()">Join Game</button>
@@ -15,6 +20,11 @@
     </div>
 
     <div id="game" style="display:none">
+        <div id="stats-bar">
+            <span>🎮 Games Played: <strong id="total-games">0</strong></span>
+            <span>🏆 My Wins: <strong id="my-wins">0</strong></span>
+            <span>💀 My Losses: <strong id="my-losses">0</strong></span>
+        </div>
         <h2 id="gameInfo"></h2>
         
         <div id="controls">

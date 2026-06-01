@@ -369,6 +369,11 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses }) => {
         document.getElementById('losses-1').textContent = losses[1];
     }
 
+        // Update games played counter
+    if (totalGamesPlayed !== undefined) {
+        updateStatsDisplay(totalGamesPlayed, null);
+    }
+
         // Show combat results to the player
     if (combatLog && combatLog.length > 0) {
         for (const fight of combatLog) {
@@ -395,6 +400,10 @@ socket.on('gameOver', ({ winner, losses }) => {
     document.getElementById('losses-0').textContent = losses[0];
     document.getElementById('losses-1').textContent = losses[1];
 
+    // Update stats display with final numbers
+    const myStats = playerStats[myPlayerIndex];
+    updateStatsDisplay(totalGamesPlayed, myStats);
+
     // Show win or loss message
     if (winner === myPlayerIndex) {
         setStatus(`🏆 You win! Your opponent lost ${losses[winner === 0 ? 1 : 0]} monsters.`);
@@ -404,4 +413,24 @@ socket.on('gameOver', ({ winner, losses }) => {
 
     // Disable all buttons so no more moves can be made
     document.querySelectorAll('#controls button').forEach(btn => btn.disabled = true);
+});
+
+function updateStatsDisplay(totalGamesPlayed, myStats) {
+    // Update in game stats bar
+    if (document.getElementById('total-games')) {
+        document.getElementById('total-games').textContent = totalGamesPlayed;
+    }
+    // Update lobby stats too
+    if (document.getElementById('lobby-total-games')) {
+        document.getElementById('lobby-total-games').textContent = totalGamesPlayed;
+    }
+    if (myStats) {
+        document.getElementById('my-wins').textContent = myStats.wins;
+        document.getElementById('my-losses').textContent = myStats.losses;
+    }
+}
+
+// Receives stats when joining or creating a game
+socket.on('statsUpdate', ({ totalGamesPlayed, myStats }) => {
+    updateStatsDisplay(totalGamesPlayed, myStats);
 });
