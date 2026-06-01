@@ -24,7 +24,10 @@ io.on('connection', (socket) => {
         const gameId = Math.random().toString(36).substr(2, 6).toUpperCase();
         games[gameId] = {
             players: [{ id: socket.id, name: playerName }],
-            status: 'waiting'
+            status: 'waiting',
+            // Server holds the authoritative board state
+            boardState: Array.from({ length: 10 }, () => Array(10).fill(null)),
+            turnEnded: []
         };
         socket.join(gameId);
         socket.emit('gameCreated', { gameId });
@@ -47,7 +50,10 @@ io.on('connection', (socket) => {
         const game = games[gameId];
         if (!game) return;
 
-        // Broadcast the placement to the OTHER player
+        // Update server board state
+        game.boardState[row][col] = { type, player: playerIndex };
+
+        // Broadcast to the OTHER player
         socket.to(gameId).emit('monsterPlaced', { row, col, type, playerIndex });
 
         console.log(`Player ${playerIndex} placed ${type} at (${row}, ${col})`);
@@ -57,7 +63,12 @@ io.on('connection', (socket) => {
         const game = games[gameId];
         if (!game) return;
 
-        // Broadcast the move to the other player
+        // Update server board state
+        const piece = game.boardState[fromRow][fromCol];
+        game.boardState[fromRow][fromCol] = null;
+        game.boardState[toRow][toCol] = piece;
+
+        // Broadcast to the other player
         socket.to(gameId).emit('monsterMoved', { fromRow, fromCol, toRow, toCol });
 
         console.log(`Player ${playerIndex} moved from (${fromRow},${fromCol}) to (${toRow},${toCol})`);
@@ -67,20 +78,19 @@ io.on('connection', (socket) => {
         const game = games[gameId];
         if (!game) return;
 
-        // Track who has ended their turn this round
         if (!game.turnEnded) game.turnEnded = [];
-        
-        // Avoid counting the same player twice
+
         if (!game.turnEnded.includes(playerIndex)) {
             game.turnEnded.push(playerIndex);
         }
 
         console.log(`Player ${playerIndex} ended their turn in game ${gameId}`);
 
-        // If all players have ended their turn, start a new round
+        // When all players have ended their turn, sync board and start new round
         if (game.turnEnded.length === game.players.length) {
-            game.turnEnded = []; // Reset for next round
-            io.to(gameId).emit('newRound');
+            game.turnEnded = [];
+            // Send the authoritative board state to ALL players
+            io.to(gameId).emit('newRound', { boardState: game.boardState });
             console.log(`New round started in game ${gameId}`);
         }
     });

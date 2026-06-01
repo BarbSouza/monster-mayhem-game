@@ -352,7 +352,17 @@ function endTurn() {
 }
 
 // Server tells us both players have ended their turn - new round begins
-socket.on('newRound', () => {
+socket.on('newRound', ({ boardState: serverBoard }) => {
+    // Replace local board with the server's authoritative state
+    boardState = serverBoard;
+    
+    // Re-render every cell
+    for (let row = 0; row < 10; row++) {
+        for (let col = 0; col < 10; col++) {
+            renderCell(row, col);
+        }
+    }
+
     placedThisTurn = false;
     movedThisTurn = [];
     selectedCell = null;
