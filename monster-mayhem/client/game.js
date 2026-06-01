@@ -434,3 +434,33 @@ function updateStatsDisplay(totalGamesPlayed, myStats) {
 socket.on('statsUpdate', ({ totalGamesPlayed, myStats }) => {
     updateStatsDisplay(totalGamesPlayed, myStats);
 });
+
+socket.on('lobbyUpdate', ({ onlineUsers, openGames }) => {
+    // Update online user count
+    const onlineEl = document.getElementById('online-users');
+    if (onlineEl) onlineEl.textContent = onlineUsers;
+
+    // Update open games list
+    const listEl = document.getElementById('open-games-list');
+    if (!listEl) return;
+
+    if (openGames.length === 0) {
+        listEl.innerHTML = '<li>No open games yet...</li>';
+        return;
+    }
+
+    // Build a list item for each open game with a quick join button
+    listEl.innerHTML = openGames.map(game => `
+        <li>
+            🎮 ${game.host}'s game 
+            <strong>${game.gameId}</strong>
+            <button onclick="quickJoin('${game.gameId}')">Join</button>
+        </li>
+    `).join('');
+});
+
+function quickJoin(gameId) {
+    const name = document.getElementById('playerName').value;
+    if (!name) return alert('Enter your name first!');
+    socket.emit('joinGame', { playerName: name, gameId });
+}

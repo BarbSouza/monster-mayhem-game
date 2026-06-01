@@ -18,6 +18,9 @@ const stats = {
     playerStats: {}
 };
 
+// Track connected users
+let onlineUsers = 0;
+
 // Combat resolution rules
 // Returns which monster survives, or null if both are removed
 function resolveCombat(type1, type2) {
@@ -94,11 +97,41 @@ function resolveAllCombat(boardState) {
 app.use(express.static(path.join(__dirname, '../client')));
 
 io.on('connection', (socket) => {
+    onlineUsers++;
     console.log('A user connected:', socket.id);
+    
+    // Send current lobby state to the newly connected user
+    socket.emit('lobbyUpdate', {
+        onlineUsers,
+        openGames: getOpenGames()
+    });
+
+    // Tell everyone else the online count changed
+    socket.broadcast.emit('lobbyUpdate', {
+        onlineUsers,
+        openGames: getOpenGames()
+    });
 
     socket.on('disconnect', () => {
+        onlineUsers--;
         console.log('User disconnected:', socket.id);
+        
+        // Tell everyone the online count changed
+        io.emit('lobbyUpdate', {
+            onlineUsers,
+            openGames: getOpenGames()
+        });
     });
+
+    // Returns list of games that are waiting for a second player
+    function getOpenGames() {
+        return Object.entries(games)
+            .filter(([id, game]) => game.status === 'waiting')
+            .map(([id, game]) => ({
+                gameId: id,
+                host: game.players[0].name
+            }));
+    }
 
     socket.on('createGame', ({ playerName }) => {
         const gameId = Math.random().toString(36).substr(2, 6).toUpperCase();
@@ -126,6 +159,12 @@ io.on('connection', (socket) => {
         });
 
         console.log(`Game ${gameId} created by ${playerName}`);
+
+        // Tell everyone about the new open game
+        io.emit('lobbyUpdate', {
+            onlineUsers,
+            openGames: getOpenGames()
+        });
     });
 
     socket.on('joinGame', ({ playerName, gameId }) => {
@@ -155,6 +194,12 @@ io.on('connection', (socket) => {
         });
 
         console.log(`${playerName} joined game ${gameId}`);
+
+        // Tell everyone this game is no longer open
+        io.emit('lobbyUpdate', {
+            onlineUsers,
+            openGames: getOpenGames()
+        });
     });
 
     socket.on('placeMonster', ({ gameId, row, col, type, playerIndex }) => {
