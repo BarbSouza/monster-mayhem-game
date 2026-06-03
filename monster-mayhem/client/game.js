@@ -676,10 +676,10 @@ function showGameCode(gameId) {
     // Show the game code prominently with a copy button
     const gameInfo = document.getElementById('gameInfo');
     gameInfo.innerHTML = `
+        <br>Monster Mayhem
         Game Code: <strong>${gameId}</strong>
-        <button onclick="copyGameCode('${gameId}')">📋 Copy Code</button>
-        <span id="copy-confirm" style="display:none; color:green;">✅ Copied!</span>
-        <br><small>Share this code with your opponent</small>
+        <button onclick="copyGameCode('${gameId}')">Copy Code</button>
+        <span id="copy-confirm" style="display:none; color:green;">Copied!</span>
     `;
 }
 

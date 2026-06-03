@@ -59,6 +59,7 @@
     </div>
 
     <div id="game" style="display:none">
+        <h2 id="gameInfo"></h2>
         <div id="stats-bar">
             <span>🎮 Games Played: <strong id="total-games">0</strong></span>
             <span>🏆 My Wins: <strong id="my-wins">0</strong></span>
@@ -75,12 +76,11 @@
                     <button onclick="selectMonster('vampire')">🧛 Vampire</button>
                     <button onclick="selectMonster('werewolf')">🐺 Werewolf</button>
                     <button onclick="selectMonster('ghost')">👻 Ghost</button>
-                    <button onclick="selectMonster(null)">❌ Cancel</button>
+                    <button onclick="endTurn()">✅ End Turn</button>
                     <p id="statusText">Waiting for game to start...</p>
                 </div>
-                <div id="controls">
-                    <button onclick="endTurn()">✅ End Turn</button>
-                </div>
+
+                
                 <div id="controls">
                     <button onclick="giveUp()">🏳️ Give Up</button>
                     <button onclick="backToLobby()">🏠 Back to Lobby</button>
@@ -103,8 +103,13 @@
                     </ul>
                 </div>
 
+            </div>
+
+            <!-- RIGHT COLUMN -->
+            <div id="game-board-area">
+                <div id="board"></div>
                 <div id="game-instructions">
-                    <button onclick="toggleInstructions()">📖 Show / Hide Instructions</button>
+                    <button onclick="toggleInstructions()">Instructions</button>
                     <div id="instructions-content" style="display:none">
                         <p><strong>⚡ Act fast — both players move simultaneously!</strong> Your opponent is planning their moves right now. Neither of you sees the other's moves until both press End Turn.</p>
                         <p><strong>Place:</strong> Click a monster button then click your edge row. One placement per turn.</p>
@@ -113,12 +118,6 @@
                         <p><strong>Win:</strong> First player to lose 10 monsters is eliminated!</p>
                     </div>
                 </div>
-                <h2 id="gameInfo"></h2>
-            </div>
-
-            <!-- RIGHT COLUMN -->
-            <div id="game-board-area">
-                <div id="board"></div>
             </div>
 
         </div>
