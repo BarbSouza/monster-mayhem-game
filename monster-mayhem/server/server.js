@@ -454,33 +454,89 @@ io.on('connection', (socket) => {
 
     stats.totalGamesPlayed += 1;
 
-    for (let i = 0; i < game.players.length; i++) {
-        const playerName = game.players[i].name;
+        for (let i = 0; i < game.players.length; i++) {
+            const playerName = game.players[i].name;
 
-        if (!stats.playerStats[playerName]) {
-            stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
+            if (!stats.playerStats[playerName]) {
+                stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
+            }
+
+            if (i === winnerIndex) {
+                stats.playerStats[playerName].wins += 1;
+            } else {
+                stats.playerStats[playerName].losses += 1;
+            }
+        } 
+
+        io.to(gameId).emit('gameOver', {
+            winner: winnerIndex,
+            losses: game.losses,
+            totalGamesPlayed: stats.totalGamesPlayed,
+            playerStats: {
+                0: stats.playerStats[game.players[0].name],
+                1: stats.playerStats[game.players[1].name]
+            }
+        });
+
+        game.status = 'finished';
+        console.log(`Player ${playerIndex} gave up in game ${gameId}!`);
+    }); 
+
+        socket.on('leaveGame', ({ gameId, playerIndex }) => {
+        const game = games[gameId];
+        if (!game) return;
+
+        // If game was still waiting, just delete it
+        if (game.status === 'waiting') {
+            delete games[gameId];
+            console.log(`Game ${gameId} cancelled - host left`);
+            io.emit('lobbyUpdate', {
+                onlineUsers,
+                openGames: getOpenGames()
+            });
+            return;
         }
 
-        if (i === winnerIndex) {
-            stats.playerStats[playerName].wins += 1;
-        } else {
-            stats.playerStats[playerName].losses += 1;
-        }
-    }
+        // If game was active, the other player wins
+        if (game.status === 'active') {
+            const winnerIndex = playerIndex === 0 ? 1 : 0;
 
-    io.to(gameId).emit('gameOver', {
-        winner: winnerIndex,
-        losses: game.losses,
-        totalGamesPlayed: stats.totalGamesPlayed,
-        playerStats: {
-            0: stats.playerStats[game.players[0].name],
-            1: stats.playerStats[game.players[1].name]
+            stats.totalGamesPlayed += 1;
+
+            for (let i = 0; i < game.players.length; i++) {
+                const playerName = game.players[i].name;
+
+                if (!stats.playerStats[playerName]) {
+                    stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
+                }
+
+                if (i === winnerIndex) {
+                    stats.playerStats[playerName].wins += 1;
+                } else {
+                    stats.playerStats[playerName].losses += 1;
+                }
+            }
+
+            // Notify the remaining player
+            io.to(gameId).emit('opponentDisconnected', {
+                winnerIndex,
+                totalGamesPlayed: stats.totalGamesPlayed,
+                playerStats: {
+                    0: stats.playerStats[game.players[0].name],
+                    1: stats.playerStats[game.players[1].name]
+                }
+            });
+
+            game.status = 'finished';
+            console.log(`Player ${playerIndex} left game ${gameId} - Player ${winnerIndex} wins!`);
         }
+
+        // Update lobby for everyone
+        io.emit('lobbyUpdate', {
+            onlineUsers,
+            openGames: getOpenGames()
+        });
     });
-
-    game.status = 'finished';
-    console.log(`Player ${playerIndex} gave up in game ${gameId}!`);
-});
 
 });
 

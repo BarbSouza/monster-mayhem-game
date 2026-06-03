@@ -515,6 +515,11 @@ function quickJoin(gameId) {
 }
 
 function backToLobby() {
+    // Tell the server this player is leaving
+    if (currentGameId) {
+        socket.emit('leaveGame', { gameId: currentGameId, playerIndex: myPlayerIndex });
+    }
+
     // Reset all game state
     currentGameId = null;
     myPlayerIndex = null;
@@ -525,7 +530,10 @@ function backToLobby() {
     movedThisTurn = [];
     boardState = Array.from({ length: 10 }, () => Array(10).fill(null));
 
-    // Re-enable all buttons in case game ended
+    // Hide post game options
+    document.getElementById('post-game').style.display = 'none';
+
+    // Re-enable all buttons
     document.querySelectorAll('#controls button').forEach(btn => btn.disabled = false);
 
     // Switch views
