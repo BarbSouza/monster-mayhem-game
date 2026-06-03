@@ -99,9 +99,27 @@ function buildBoard() {
     const board = document.getElementById('board');
     board.innerHTML = '';
 
-    document.getElementById('post-game').style.display = 'none';
+    // Add an empty top-left corner cell
+    const corner = document.createElement('div');
+    corner.classList.add('coord-label');
+    board.appendChild(corner);
 
+    // Add column numbers (0-9) across the top
+    for (let col = 0; col < 10; col++) {
+        const label = document.createElement('div');
+        label.classList.add('coord-label');
+        label.textContent = col;
+        board.appendChild(label);
+    }
+
+    // Add rows with row number on the left
     for (let row = 0; row < 10; row++) {
+        // Row number label on the left
+        const rowLabel = document.createElement('div');
+        rowLabel.classList.add('coord-label');
+        rowLabel.textContent = row;
+        board.appendChild(rowLabel);
+
         for (let col = 0; col < 10; col++) {
             const cell = document.createElement('div');
             cell.classList.add('cell');
