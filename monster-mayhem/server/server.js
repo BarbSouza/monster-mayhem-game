@@ -212,13 +212,6 @@ io.on('connection', (socket) => {
         socket.join(gameId);
         socket.emit('gameCreated', { gameId });
 
-        // Send current stats to creator
-        socket.emit('statsUpdate', {
-            totalGamesPlayed: stats.totalGamesPlayed,
-            myStats: stats.playerStats[socket.id],
-            opponentStats: null
-        });
-
         console.log(`Game ${gameId} created by ${playerName}`);
 
         // Tell everyone about the new open game
@@ -252,13 +245,6 @@ io.on('connection', (socket) => {
 
         socket.emit('gameJoined', { gameId });
         io.to(gameId).emit('playerJoined', { players: game.players });
-
-        // Send current stats to both players
-        io.to(gameId).emit('statsUpdate', {
-            totalGamesPlayed: stats.totalGamesPlayed,
-            myStats: stats.playerStats[game.players[0].id],
-            opponentStats: stats.playerStats[game.players[1].id]
-        });
 
         console.log(`${playerName} joined game ${gameId}`);
 
