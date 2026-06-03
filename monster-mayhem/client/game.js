@@ -55,11 +55,11 @@ socket.on('gameCreated', (data) => {
     currentGameId = data.gameId;
     myPlayerIndex = 0;
     playerNames[0] = document.getElementById('playerName').value;
-    alert(`Game created! Share this code: ${data.gameId}`);
     document.getElementById('lobby').style.display = 'none';
     document.getElementById('game').style.display = 'block';
     document.getElementById('gameInfo').textContent = `Game Code: ${data.gameId} - Waiting for another player...`;
     buildBoard();
+    showGameCode(data.gameId);
 });
 
 // Called when we successfully join a game
@@ -643,3 +643,26 @@ socket.on('opponentDisconnected', ({ winnerIndex, totalGamesPlayed, playerStats 
     // Show post game options
     document.getElementById('post-game').style.display = 'block';
 });
+
+function showGameCode(gameId) {
+    // Show the game code prominently with a copy button
+    const gameInfo = document.getElementById('gameInfo');
+    gameInfo.innerHTML = `
+        Game Code: <strong>${gameId}</strong>
+        <button onclick="copyGameCode('${gameId}')">📋 Copy Code</button>
+        <span id="copy-confirm" style="display:none; color:green;">✅ Copied!</span>
+        <br><small>Share this code with your opponent</small>
+    `;
+}
+
+function copyGameCode(gameId) {
+    // Copy the game code to clipboard
+    navigator.clipboard.writeText(gameId).then(() => {
+        // Show confirmation message briefly
+        const confirm = document.getElementById('copy-confirm');
+        confirm.style.display = 'inline';
+        setTimeout(() => {
+            confirm.style.display = 'none';
+        }, 2000);
+    });
+}
