@@ -90,6 +90,8 @@ function buildBoard() {
     const board = document.getElementById('board');
     board.innerHTML = '';
 
+    document.getElementById('post-game').style.display = 'none';
+
     for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
             const cell = document.createElement('div');
@@ -608,6 +610,9 @@ function giveUp() {
 }
 
 function playAgain() {
+    // Save the player name before resetting
+    const savedName = playerNames[myPlayerIndex];
+
     // Reset all game state
     currentGameId = null;
     myPlayerIndex = null;
@@ -627,4 +632,7 @@ function playAgain() {
     // Switch to lobby
     document.getElementById('game').style.display = 'none';
     document.getElementById('lobby').style.display = 'block';
+
+    // Pre-fill their name so they can quickly start a new game
+    document.getElementById('playerName').value = savedName;
 }
