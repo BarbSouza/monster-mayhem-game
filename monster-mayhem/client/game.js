@@ -406,6 +406,8 @@ function endTurn() {
     clearHighlights();
     myTurnEnded = true;
 
+    setControlsLocked(true);
+
     socket.emit('endTurn', { gameId: currentGameId, playerIndex: myPlayerIndex });
     setStatus('Turn ended - waiting for opponent...');
 }
@@ -415,9 +417,9 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesP
     // Reset turn ended flag for new round
     myTurnEnded = false;
 
-    boardState = serverBoard;
-
     setControlsLocked(false);
+
+    boardState = serverBoard;
 
     for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
@@ -445,13 +447,14 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesP
         setStatus('New round! Place or move your monsters.');
     }
 
-    checkAndLockIfNoMoves();
 
     placedThisTurn = false;
     movedThisTurn = [];
     selectedCell = null;
     selectedMonster = null;
     clearHighlights();
+
+    checkAndLockIfNoMoves();
 });
 
 socket.on('gameOver', ({ winner, losses, totalGamesPlayed, playerStats }) => {
@@ -577,6 +580,17 @@ function hasAnyValidMoves() {
 }
 
 function checkAndLockIfNoMoves() {
+// Count how many monsters this player has on the board
+    let monsterCount = 0;
+    for (let r = 0; r < 10; r++) {
+        for (let c = 0; c < 10; c++) {
+            const cell = boardState[r][c];
+            if (cell && cell.player === myPlayerIndex) monsterCount++;
+        }
+    }
+    
+    if (!placedThisTurn) return;
+
     if (!hasAnyValidMoves()) {
         // Disable monster selection and board clicks
         document.querySelectorAll('#controls button:not([onclick="endTurn()"])' +
