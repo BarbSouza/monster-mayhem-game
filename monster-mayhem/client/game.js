@@ -266,12 +266,6 @@ function setStatus(msg) {
     document.getElementById('statusText').textContent = msg;
 }
 
-// When the other player places a monster, update our board
-socket.on('monsterPlaced', ({ row, col, type, playerIndex }) => {
-    boardState[row][col] = { type, player: playerIndex };
-    renderCell(row, col);
-    setStatus(`Opponent placed a ${type}!`);
-});
 
 function getValidMoves(fromRow, fromCol) {
     const validMoves = [];
@@ -385,15 +379,6 @@ function tryMove(fromRow, fromCol, toRow, toCol) {
     checkAndLockIfNoMoves();
 }
 
-// When the other player moves a monster, update our board
-socket.on('monsterMoved', ({ fromRow, fromCol, toRow, toCol }) => {
-    const piece = boardState[fromRow][fromCol];
-    boardState[fromRow][fromCol] = null;
-    boardState[toRow][toCol] = piece;
-    renderCell(fromRow, fromCol);
-    renderCell(toRow, toCol);
-    setStatus('Opponent moved a monster!');
-});
 
 function endTurn() {
     if (myTurnEnded) {

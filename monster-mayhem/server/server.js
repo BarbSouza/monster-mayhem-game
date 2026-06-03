@@ -231,9 +231,6 @@ io.on('connection', (socket) => {
             game.boardState[row][col] = piece;
         }
 
-        // Broadcast to the OTHER player
-        socket.to(gameId).emit('monsterPlaced', { row, col, type, playerIndex });
-
         console.log(`Player ${playerIndex} placed ${type} at (${row}, ${col})`);
     });
 
@@ -266,7 +263,6 @@ io.on('connection', (socket) => {
             game.boardState[toRow][toCol] = piece;
         }
 
-        socket.to(gameId).emit('monsterMoved', { fromRow, fromCol, toRow, toCol });
         console.log(`Player ${playerIndex} moved from (${fromRow},${fromCol}) to (${toRow},${toCol})`);
     });
 
