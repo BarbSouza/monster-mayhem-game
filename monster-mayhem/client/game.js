@@ -43,6 +43,9 @@ let myTurnEnded = false;
 // Store player names
 let playerNames = ['Player 1', 'Player 2'];
 
+// Track which round we are on for the combat log
+let roundNumber = 0;
+
 // Monster emojis for display
 const MONSTERS = {
     vampire: '🧛',
@@ -87,6 +90,12 @@ socket.on('playerJoined', ({ players }) => {
 
 // Build the 10x10 grid
 function buildBoard() {
+    roundNumber = 0;
+
+    // Clear combat log
+    const list = document.getElementById('combat-log-list');
+    list.innerHTML = '<li class="placeholder">No combat yet...</li>';
+
     const board = document.getElementById('board');
     board.innerHTML = '';
 
@@ -401,11 +410,10 @@ function endTurn() {
 
 // Server tells us both players have ended their turn - new round begins
 socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesPlayed }) => {
-    // Reset turn ended flag for new round
     myTurnEnded = false;
+    roundNumber++;
 
     setControlsLocked(false);
-
     boardState = serverBoard;
 
     for (let row = 0; row < 10; row++) {
@@ -422,25 +430,19 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesP
         updateStatsDisplay(totalGamesPlayed, null);
     }
 
+    // Update combat log with this round's fights
     if (combatLog && combatLog.length > 0) {
-        for (const fight of combatLog) {
-            if (fight.removed === 'both') {
-                setStatus(`⚔️ Both monsters at (${fight.row},${fight.col}) were destroyed!`);
-            } else {
-                setStatus(`⚔️ ${fight.survived} survived, ${fight.removed} was removed!`);
-            }
-        }
+        updateCombatLog(combatLog, roundNumber);
+        setStatus(`⚔️ Round ${roundNumber} combat resolved!`);
     } else {
-        setStatus('New round! Place or move your monsters.');
+        setStatus(`Round ${roundNumber + 1} started! Place or move your monsters.`);
     }
-
 
     placedThisTurn = false;
     movedThisTurn = [];
     selectedCell = null;
     selectedMonster = null;
     clearHighlights();
-
     checkAndLockIfNoMoves();
 });
 
@@ -673,4 +675,36 @@ function copyGameCode(gameId) {
             confirm.style.display = 'none';
         }, 2000);
     });
+}
+
+function updateCombatLog(combatLog, roundNumber) {
+    const list = document.getElementById('combat-log-list');
+    
+    if (!combatLog || combatLog.length === 0) return;
+
+    // Add a round header
+    const roundHeader = document.createElement('li');
+    roundHeader.innerHTML = `<strong>--- Round ${roundNumber} ---</strong>`;
+    roundHeader.classList.add('log-round-header');
+    list.appendChild(roundHeader);
+
+    // Add each fight result
+    for (const fight of combatLog) {
+        const item = document.createElement('li');
+
+        if (fight.removed === 'both') {
+            item.textContent = `(${fight.row},${fight.col}) Both monsters destroyed!`;
+        } else {
+            item.textContent = `(${fight.row},${fight.col}) ${fight.survived} survived, ${fight.removed} removed!`;
+        }
+
+        list.appendChild(item);
+    }
+
+    // Auto scroll to bottom of log
+    list.scrollTop = list.scrollHeight;
+
+    // Remove the placeholder text if it's still there
+    const placeholder = list.querySelector('.placeholder');
+    if (placeholder) placeholder.remove();
 }

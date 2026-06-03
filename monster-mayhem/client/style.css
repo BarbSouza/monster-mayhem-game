@@ -67,3 +67,33 @@
 #instructions-content p {
     margin: 5px 0;
 }
+
+#combat-log {
+    margin: 10px 0;
+    max-width: 620px;
+}
+
+#combat-log h4 {
+    margin: 0 0 5px 0;
+}
+
+#combat-log-list {
+    list-style: none;
+    padding: 5px;
+    margin: 0;
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 13px;
+}
+
+#combat-log-list li {
+    padding: 2px 5px;
+}
+
+.log-round-header {
+    color: #888;
+    margin-top: 5px;
+    font-size: 12px;
+}

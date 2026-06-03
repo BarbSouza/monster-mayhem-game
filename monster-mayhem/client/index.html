@@ -85,7 +85,14 @@
             <p>🔴 Player 1 losses: <span id="losses-0">0</span>/10</p>
             <p>🔵 Player 2 losses: <span id="losses-1">0</span>/10</p>
         </div>
-        <div id="game-instructions">
+        <div id="combat-log">
+            <h4>⚔️ Combat Log</h4>
+            <ul id="combat-log-list">
+                <li>No combat yet...</li>
+            </ul>
+        </div>
+        <div id="board"></div>
+                <div id="game-instructions">
             <button onclick="toggleInstructions()">📖 Show / Hide Instructions</button>
             <div id="instructions-content" style="display:none">
                 <p><strong>⚡ Act fast — both players move simultaneously!</strong> Your opponent is planning their moves right now. Neither of you sees the other's moves until both press End Turn.</p>
@@ -95,7 +102,6 @@
                 <p><strong>Win:</strong> First player to lose 10 monsters is eliminated!</p>
             </div>
         </div>
-        <div id="board"></div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
