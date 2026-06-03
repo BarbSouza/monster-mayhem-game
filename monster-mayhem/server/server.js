@@ -238,28 +238,46 @@ io.on('connection', (socket) => {
         const game = games[gameId];
         if (!game) return;
 
-        const piece = game.boardState[fromRow][fromCol];
+        // Get the piece that is moving
+        // It might be stored as the main piece or as the challenger
+        let piece = null;
+
+        const fromCell = game.boardState[fromRow][fromCol];
+
+        if (fromCell && fromCell.player === playerIndex) {
+            // The main piece belongs to this player - take it
+            piece = { type: fromCell.type, player: fromCell.player };
+
+            if (fromCell.challenger) {
+                // There was a challenger waiting here - leave the challenger behind
+                game.boardState[fromRow][fromCol] = fromCell.challenger;
+            } else {
+                game.boardState[fromRow][fromCol] = null;
+            }
+        } else if (fromCell && fromCell.challenger && fromCell.challenger.player === playerIndex) {
+            // The challenger belongs to this player - extract it
+            piece = fromCell.challenger;
+            // Remove the challenger, leave the original
+            delete game.boardState[fromRow][fromCol].challenger;
+        } else {
+            // Piece not found - ignore
+            return;
+        }
+
         const targetCell = game.boardState[toRow][toCol];
 
-        game.boardState[fromRow][fromCol] = null;
-
         if (!targetCell) {
-            // Empty square - just move there
             game.boardState[toRow][toCol] = piece;
         } else if (targetCell.player !== piece.player) {
-            // Enemy on this square - store as challenger
-            // But only if there isn't already a challenger stored
             if (!targetCell.challenger) {
                 game.boardState[toRow][toCol] = {
                     ...targetCell,
                     challenger: piece
                 };
             } else {
-                // There's already a challenger - just overwrite for now
                 game.boardState[toRow][toCol] = piece;
             }
         } else {
-            // Own monster already there - shouldn't happen but handle safely
             game.boardState[toRow][toCol] = piece;
         }
 
