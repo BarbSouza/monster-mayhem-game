@@ -231,6 +231,8 @@ function placeMonster(row, col) {
     placedThisTurn = true;
     selectedMonster = null;
     setStatus(`Placed ${boardState[row][col].type}! You can now move other monsters.`);
+
+    checkAndLockIfNoMoves();
 }
 
 // Update a single cell on the board visually
@@ -377,6 +379,8 @@ function tryMove(fromRow, fromCol, toRow, toCol) {
     clearHighlights();
     selectedCell = null;
     setStatus(`Moved ${piece.type} to (${toRow}, ${toCol})`);
+
+    checkAndLockIfNoMoves();
 }
 
 // When the other player moves a monster, update our board
@@ -413,6 +417,8 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesP
 
     boardState = serverBoard;
 
+    setControlsLocked(false);
+
     for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
             renderCell(row, col);
@@ -438,6 +444,8 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesP
     } else {
         setStatus('New round! Place or move your monsters.');
     }
+
+    checkAndLockIfNoMoves();
 
     placedThisTurn = false;
     movedThisTurn = [];
@@ -544,4 +552,36 @@ function updateScoreboard(losses) {
     const p1label = document.querySelector('#scoreboard p:last-child');
     if (p0label) p0label.innerHTML = `🔴 ${playerNames[0]} losses: <span id="losses-0">${l0}</span>/10`;
     if (p1label) p1label.innerHTML = `🔵 ${playerNames[1]} losses: <span id="losses-1">${l1}</span>/10`;
+}
+
+function hasAnyValidMoves() {
+    // Check every cell on the board
+    for (let row = 0; row < 10; row++) {
+        for (let col = 0; col < 10; col++) {
+            const piece = boardState[row][col];
+
+            // Only check our own monsters
+            if (!piece || piece.player !== myPlayerIndex) continue;
+
+            // Skip monsters already moved this turn
+            if (movedThisTurn.some(m => m.row === row && m.col === col)) continue;
+
+            // Skip monster placed this turn
+            if (placedThisTurn && piece.placedThisTurn) continue;
+
+            // If this monster has at least one valid move, we're not stuck
+            if (getValidMoves(row, col).length > 0) return true;
+        }
+    }
+    return false;
+}
+
+function checkAndLockIfNoMoves() {
+    if (!hasAnyValidMoves()) {
+        // Disable monster selection and board clicks
+        document.querySelectorAll('#controls button:not([onclick="endTurn()"])' +
+            ':not([onclick="backToLobby()"])').forEach(btn => btn.disabled = true);
+        document.getElementById('board').style.pointerEvents = 'none';
+        setStatus('No moves left - press End Turn!');
+    }
 }
