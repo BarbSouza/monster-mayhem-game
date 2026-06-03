@@ -626,3 +626,20 @@ function toggleInstructions() {
     const content = document.getElementById('instructions-content');
     content.style.display = content.style.display === 'none' ? 'block' : 'none';
 }
+
+socket.on('opponentDisconnected', ({ winnerIndex, totalGamesPlayed, playerStats }) => {
+    const myStats = playerStats[myPlayerIndex];
+    updateStatsDisplay(totalGamesPlayed, myStats);
+
+    if (winnerIndex === myPlayerIndex) {
+        setStatus('🏆 Your opponent disconnected — you win!');
+    } else {
+        setStatus('💀 You disconnected from the game.');
+    }
+
+    // Disable all game controls
+    document.querySelectorAll('#controls button').forEach(btn => btn.disabled = true);
+
+    // Show post game options
+    document.getElementById('post-game').style.display = 'block';
+});

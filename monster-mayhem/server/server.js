@@ -115,8 +115,63 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         onlineUsers--;
         console.log('User disconnected:', socket.id);
-        
-        // Tell everyone the online count changed
+
+        // Check if this player was in an active game
+        for (const gameId in games) {
+            const game = games[gameId];
+
+            // Find which player index this socket was
+            const playerIndex = game.players.findIndex(p => p.id === socket.id);
+            if (playerIndex === -1) continue;
+
+            // Only handle active games - ignore waiting or finished
+            if (game.status !== 'active') {
+                // If they were waiting for opponent, just remove the game
+                if (game.status === 'waiting') {
+                    delete games[gameId];
+                    io.emit('lobbyUpdate', {
+                        onlineUsers,
+                        openGames: getOpenGames()
+                    });
+                }
+                continue;
+            }
+
+            // The other player wins by default
+            const winnerIndex = playerIndex === 0 ? 1 : 0;
+
+            // Update stats
+            stats.totalGamesPlayed += 1;
+
+            for (let i = 0; i < game.players.length; i++) {
+                const playerName = game.players[i].name;
+
+                if (!stats.playerStats[playerName]) {
+                    stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
+                }
+
+                if (i === winnerIndex) {
+                    stats.playerStats[playerName].wins += 1;
+                } else {
+                    stats.playerStats[playerName].losses += 1;
+                }
+            }
+
+            // Notify the remaining player
+            io.to(gameId).emit('opponentDisconnected', {
+                winnerIndex,
+                totalGamesPlayed: stats.totalGamesPlayed,
+                playerStats: {
+                    0: stats.playerStats[game.players[0].name],
+                    1: stats.playerStats[game.players[1].name]
+                }
+            });
+
+            game.status = 'finished';
+            console.log(`Player ${playerIndex} disconnected from game ${gameId} - Player ${winnerIndex} wins!`);
+        }
+
+        // Update lobby for everyone
         io.emit('lobbyUpdate', {
             onlineUsers,
             openGames: getOpenGames()
