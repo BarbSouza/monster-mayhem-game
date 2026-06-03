@@ -76,10 +76,14 @@
                     <button onclick="selectMonster('werewolf')">🐺 Werewolf</button>
                     <button onclick="selectMonster('ghost')">👻 Ghost</button>
                     <button onclick="selectMonster(null)">❌ Cancel</button>
+                    <p id="statusText">Waiting for game to start...</p>
+                </div>
+                <div id="controls">
                     <button onclick="endTurn()">✅ End Turn</button>
+                </div>
+                <div id="controls">
                     <button onclick="giveUp()">🏳️ Give Up</button>
                     <button onclick="backToLobby()">🏠 Back to Lobby</button>
-                    <p id="statusText">Waiting for game to start...</p>
                 </div>
 
                 <div id="post-game" style="display:none">
