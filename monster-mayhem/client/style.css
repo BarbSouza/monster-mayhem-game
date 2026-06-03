@@ -39,3 +39,31 @@
     background-color: rgba(0, 255, 0, 0.3) !important;
     cursor: pointer;
 }
+
+#lobby-instructions {
+    margin: 20px 0;
+    padding: 15px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    max-width: 500px;
+}
+
+#lobby-instructions ul {
+    margin: 5px 0 10px 20px;
+}
+
+#game-instructions {
+    margin: 10px 0;
+    max-width: 600px;
+}
+
+#instructions-content {
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    margin-top: 5px;
+}
+
+#instructions-content p {
+    margin: 5px 0;
+}

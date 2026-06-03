@@ -621,3 +621,8 @@ function playAgain() {
     // Pre-fill their name so they can quickly start a new game
     document.getElementById('playerName').value = savedName;
 }
+
+function toggleInstructions() {
+    const content = document.getElementById('instructions-content');
+    content.style.display = content.style.display === 'none' ? 'block' : 'none';
+}

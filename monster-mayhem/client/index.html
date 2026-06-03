@@ -13,17 +13,47 @@
             <p>🎮 Total Games Played: <span id="lobby-total-games">0</span></p>
         </div>   
         
-            <div id="open-games">
-                <h3>Open Games</h3>
-                <ul id="open-games-list">
-                    <li>No open games yet...</li>
-                </ul>
-            </div>
+        <div id="open-games">
+            <h3>Open Games</h3>
+            <ul id="open-games-list">
+                <li>No open games yet...</li>
+            </ul>
+        </div>
 
         <input type="text" id="playerName" placeholder="Enter your name" />
         <button onclick="createGame()">Create Game</button>
         <button onclick="joinGame()">Join Game</button>
         <input type="text" id="gameCode" placeholder="Game code to join" />
+
+        <div id="lobby-instructions">
+            <h3>📖 How to Play</h3>
+            <p><strong>Objective:</strong> Eliminate your opponent by having 10 of their monsters removed.</p>
+
+            <p><strong>Each turn you can:</strong></p>
+            <ul>
+                <li>Place one new monster on your edge row</li>
+                <li>Move any of your existing monsters once each</li>
+            </ul>
+
+            <p><strong>Movement rules:</strong></p>
+                <ul>
+                    <li>Monsters move any number of squares horizontally or vertically</li>
+                    <li>Monsters move up to 2 squares diagonally</li>
+                    <li>Monsters can pass over your own monsters but cannot land on them</li>
+                    <li>Monsters cannot enter the opponent's starting row</li>
+                </ul>
+
+            <p><strong>Combat — when two monsters land on the same square:</strong></p>
+                <ul>
+                    <li>🧛 Vampire beats 🐺 Werewolf</li>
+                    <li>🐺 Werewolf beats 👻 Ghost</li>
+                    <li>👻 Ghost beats 🧛 Vampire</li>
+                    <li>Same type? Both are removed!</li>
+                </ul>
+
+                <p><strong>⚡ Turns are simultaneous!</strong> Both players move at the same time — neither player sees the opponent's moves until both press End Turn. Plan carefully!</p>
+        </div>
+
     </div>
 
     <div id="game" style="display:none">
@@ -54,6 +84,16 @@
         <div id="scoreboard">
             <p>🔴 Player 1 losses: <span id="losses-0">0</span>/10</p>
             <p>🔵 Player 2 losses: <span id="losses-1">0</span>/10</p>
+        </div>
+        <div id="game-instructions">
+            <button onclick="toggleInstructions()">📖 Show / Hide Instructions</button>
+            <div id="instructions-content" style="display:none">
+                <p><strong>⚡ Act fast — both players move simultaneously!</strong> Your opponent is planning their moves right now. Neither of you sees the other's moves until both press End Turn.</p>
+                <p><strong>Place:</strong> Click a monster button then click your edge row. One placement per turn.</p>
+                <p><strong>Move:</strong> Click one of your monsters — valid moves highlight green. Click a green square to move.</p>
+                <p><strong>Combat:</strong> 🧛 beats 🐺 → 🐺 beats 👻 → 👻 beats 🧛 → Same type removes both.</p>
+                <p><strong>Win:</strong> First player to lose 10 monsters is eliminated!</p>
+            </div>
         </div>
         <div id="board"></div>
     </div>
