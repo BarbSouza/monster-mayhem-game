@@ -390,6 +390,43 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('giveUp', ({ gameId, playerIndex }) => {
+    const game = games[gameId];
+    if (!game) return;
+
+    // The player who gave up loses, the other player wins
+    const winnerIndex = playerIndex === 0 ? 1 : 0;
+
+    stats.totalGamesPlayed += 1;
+
+    for (let i = 0; i < game.players.length; i++) {
+        const playerName = game.players[i].name;
+
+        if (!stats.playerStats[playerName]) {
+            stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
+        }
+
+        if (i === winnerIndex) {
+            stats.playerStats[playerName].wins += 1;
+        } else {
+            stats.playerStats[playerName].losses += 1;
+        }
+    }
+
+    io.to(gameId).emit('gameOver', {
+        winner: winnerIndex,
+        losses: game.losses,
+        totalGamesPlayed: stats.totalGamesPlayed,
+        playerStats: {
+            0: stats.playerStats[game.players[0].name],
+            1: stats.playerStats[game.players[1].name]
+        }
+    });
+
+    game.status = 'finished';
+    console.log(`Player ${playerIndex} gave up in game ${gameId}!`);
+});
+
 });
 
 server.listen(PORT, () => {

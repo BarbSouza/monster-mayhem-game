@@ -41,9 +41,16 @@
             <button onclick="selectMonster('ghost')">👻 Ghost</button>
             <button onclick="selectMonster(null)">❌ Cancel</button>
             <button onclick="endTurn()">✅ End Turn</button>
+            <button onclick="giveUp()">🏳️ Give Up</button>
             <button onclick="backToLobby()">🏠 Back to Lobby</button>
             <p id="statusText">Waiting for game to start...</p>
         </div>
+
+        <div id="post-game" style="display:none">
+            <button onclick="playAgain()">🔄 Play Again</button>
+            <button onclick="backToLobby()">🏠 Back to Lobby</button>
+        </div>
+
         <div id="scoreboard">
             <p>🔴 Player 1 losses: <span id="losses-0">0</span>/10</p>
             <p>🔵 Player 2 losses: <span id="losses-1">0</span>/10</p>

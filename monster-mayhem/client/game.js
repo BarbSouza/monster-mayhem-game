@@ -473,6 +473,8 @@ socket.on('gameOver', ({ winner, losses, totalGamesPlayed, playerStats }) => {
     }
 
     document.querySelectorAll('#controls button').forEach(btn => btn.disabled = true);
+
+    document.getElementById('post-game').style.display = 'block';
 });
 
 function updateStatsDisplay(totalGamesPlayed, myStats) {
@@ -588,7 +590,7 @@ function checkAndLockIfNoMoves() {
             if (cell && cell.player === myPlayerIndex) monsterCount++;
         }
     }
-    
+
     if (!placedThisTurn) return;
 
     if (!hasAnyValidMoves()) {
@@ -598,4 +600,31 @@ function checkAndLockIfNoMoves() {
         document.getElementById('board').style.pointerEvents = 'none';
         setStatus('No moves left - press End Turn!');
     }
+}
+
+function giveUp() {
+    if (!confirm('Are you sure you want to give up?')) return;
+    socket.emit('giveUp', { gameId: currentGameId, playerIndex: myPlayerIndex });
+}
+
+function playAgain() {
+    // Reset all game state
+    currentGameId = null;
+    myPlayerIndex = null;
+    selectedMonster = null;
+    selectedCell = null;
+    placedThisTurn = false;
+    myTurnEnded = false;
+    movedThisTurn = [];
+    boardState = Array.from({ length: 10 }, () => Array(10).fill(null));
+
+    // Hide post game options
+    document.getElementById('post-game').style.display = 'none';
+
+    // Re-enable all buttons
+    document.querySelectorAll('#controls button').forEach(btn => btn.disabled = false);
+
+    // Switch to lobby
+    document.getElementById('game').style.display = 'none';
+    document.getElementById('lobby').style.display = 'block';
 }
