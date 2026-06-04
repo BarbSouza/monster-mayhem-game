@@ -1,5 +1,39 @@
 const socket = io();
 
+// =====================================================================
+// GAME STATE (client-side)
+// These variables track the local game state for this player's session.
+// The server holds the authoritative state; the client mirrors it after
+// each round.
+// =====================================================================
+
+let myPlayerIndex = null;      // 0 or 1 - assigned when we create/join
+let currentGameId = null;      // The 6-character game code for this session
+
+let selectedMonster = null;    // Monster type chosen from the sidebar buttons
+let placedThisTurn = false;    // True once a monster has been placed this turn (one per turn)
+
+// 10x10 grid - each cell is null or { type, player }
+let boardState = Array.from({ length: 10 }, () => Array(10).fill(null));
+
+let selectedCell = null;       // { row, col } of the monster currently selected for moving
+let movedThisTurn = [];        // Tracks destination coords of monsters moved this turn
+let myTurnEnded = false;       // Prevents double-submitting endTurn
+
+let playerNames = ['Player 1', 'Player 2'];
+let roundNumber = 0;
+
+// Emoji lookup for rendering monsters on the board
+const MONSTERS = {
+    vampire: '🧛',
+    werewolf: '🐺',
+    ghost: '👻'
+};
+
+// =====================================================================
+// LOBBY ACTIONS
+// =====================================================================
+
 function createGame() {
     const name = document.getElementById('playerName').value;
     if (!name) return alert('Enter your name first!');
@@ -13,47 +47,13 @@ function joinGame() {
     socket.emit('joinGame', { playerName: name, gameId: code });
 }
 
-
 socket.on('error', (msg) => alert(msg));
 
-// Game state variables
-// Store our player info for this session
-let myPlayerIndex = null;
-let currentGameId = null;
+// =====================================================================
+// GAME SETUP EVENTS
+// =====================================================================
 
-// Track which monster type the player has selected to place
-let selectedMonster = null;
-
-// Track which monster has been placed this turn (can only place one per turn)
-let placedThisTurn = false;
-
-// Track the full board state - 10x10 grid of cells
-// Each cell is either null or { type: 'vampire'/'werewolf'/'ghost', player: 0/1 }
-let boardState = Array.from({ length: 10 }, () => Array(10).fill(null));
-
-// Track which cell is currently selected for moving
-let selectedCell = null;
-
-// Track which monsters have already been moved this turn
-let movedThisTurn = [];
-
-// Flag to prevent multiple end turn actions
-let myTurnEnded = false;
-
-// Store player names
-let playerNames = ['Player 1', 'Player 2'];
-
-// Track which round we are on for the combat log
-let roundNumber = 0;
-
-// Monster emojis for display
-const MONSTERS = {
-    vampire: '🧛',
-    werewolf: '🐺',
-    ghost: '👻'
-};
-
-// Called when game is created - store our info and build the board
+// Received by the player who created the game
 socket.on('gameCreated', (data) => {
     currentGameId = data.gameId;
     myPlayerIndex = 0;
@@ -65,7 +65,7 @@ socket.on('gameCreated', (data) => {
     showGameCode(data.gameId);
 });
 
-// Called when we successfully join a game
+// Received by the player who joined an existing game
 socket.on('gameJoined', (data) => {
     currentGameId = data.gameId;
     myPlayerIndex = 1;
@@ -76,35 +76,37 @@ socket.on('gameJoined', (data) => {
     buildBoard();
 });
 
-// When the other player joins, update their name on the scoreboard
+// Received by both players once the second player joins - game can begin
 socket.on('playerJoined', ({ players }) => {
     playerNames[0] = players[0].name;
     if (players[1]) playerNames[1] = players[1].name;
     updateScoreboard();
-
-    // Both players are in - unlock controls
     setControlsLocked(false);
     setStatus('Game started! Place or move your monsters.');
     document.getElementById('gameInfo').textContent = `Game: ${currentGameId}`;
 });
 
-// Build the 10x10 grid
+// =====================================================================
+// BOARD RENDERING
+// =====================================================================
+
+// Builds the 10x10 grid from scratch, with coordinate labels.
+// Also resets round-specific state (combat log, round counter).
 function buildBoard() {
     roundNumber = 0;
 
-    // Clear combat log
     const list = document.getElementById('combat-log-list');
     list.innerHTML = '<li class="placeholder">No combat yet...</li>';
 
     const board = document.getElementById('board');
     board.innerHTML = '';
 
-    // Add an empty top-left corner cell
+    // Top-left corner spacer
     const corner = document.createElement('div');
     corner.classList.add('coord-label');
     board.appendChild(corner);
 
-    // Add column numbers (0-9) across the top
+    // Column number labels (0-9)
     for (let col = 0; col < 10; col++) {
         const label = document.createElement('div');
         label.classList.add('coord-label');
@@ -112,9 +114,8 @@ function buildBoard() {
         board.appendChild(label);
     }
 
-    // Add rows with row number on the left
+    // Rows: row number label + 10 cells
     for (let row = 0; row < 10; row++) {
-        // Row number label on the left
         const rowLabel = document.createElement('div');
         rowLabel.classList.add('coord-label');
         rowLabel.textContent = row;
@@ -126,6 +127,7 @@ function buildBoard() {
             cell.dataset.row = row;
             cell.dataset.col = col;
 
+            // Colour-code the home edge rows
             if (row === 0) cell.classList.add('player1-edge');
             if (row === 9) cell.classList.add('player2-edge');
 
@@ -134,81 +136,105 @@ function buildBoard() {
         }
     }
 
-    // Lock controls until the second player joins
+    // Board is locked until the second player joins
     setControlsLocked(true);
 }
 
-    function setControlsLocked(locked) {
-        // Lock or unlock all monster buttons and end turn
-        // Keep back to lobby always enabled
-        const buttons = document.querySelectorAll('#controls button:not([onclick="backToLobby()"])');
-        buttons.forEach(btn => btn.disabled = locked);
+// Disables/enables all game controls and board interaction.
+// Used while waiting for an opponent and while waiting for the
+// opponent to end their turn.
+function setControlsLocked(locked) {
+    const buttons = document.querySelectorAll('#controls button:not([onclick="backToLobby()"])');
+    buttons.forEach(btn => btn.disabled = locked);
+    document.getElementById('board').style.pointerEvents = locked ? 'none' : 'auto';
+    if (locked) setStatus('Waiting for opponent to join...');
+}
 
-        // Also prevent clicking the board
-        document.getElementById('board').style.pointerEvents = locked ? 'none' : 'auto';
+// Updates a single cell's visual appearance from boardState
+function renderCell(row, col) {
+    const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+    if (!cell) return;
 
-        if (locked) {
-            setStatus('Waiting for opponent to join...');
-        }
+    const content = boardState[row][col];
+    if (content) {
+        cell.textContent = MONSTERS[content.type];
+        // Red tint for player 0, blue tint for player 1
+        cell.style.backgroundColor = content.player === 0
+            ? 'rgba(255,0,0,0.3)'
+            : 'rgba(0,0,255,0.3)';
+    } else {
+        cell.textContent = '';
+        cell.style.backgroundColor = '';
+        // Restore edge row colour if applicable
+        if (row === 0) cell.classList.add('player1-edge');
+        if (row === 9) cell.classList.add('player2-edge');
     }
+}
 
+function setStatus(msg) {
+    document.getElementById('statusText').textContent = msg;
+}
+
+// =====================================================================
+// CELL CLICK HANDLER
+// Handles three interaction modes depending on current state:
+//   1. Monster type selected -> attempt to place it
+//   2. Monster already selected for moving -> attempt to move it
+//   3. Nothing selected -> attempt to select a monster to move
+// =====================================================================
 function onCellClick(row, col) {
-    // If a monster type is selected, try to place it
     if (selectedMonster) {
         placeMonster(row, col);
         return;
     }
 
-    // If a monster is already selected for moving
     if (selectedCell) {
-        // Clicking the same cell deselects it
         if (selectedCell.row === row && selectedCell.col === col) {
+            // Clicking the same cell again deselects it
             clearHighlights();
             selectedCell = null;
             setStatus('Deselected');
             return;
         }
-
-        // Try to move to the clicked cell
         tryMove(selectedCell.row, selectedCell.col, row, col);
         return;
     }
 
-    // No monster selected yet - try to select one
+    // Try to select a monster at this cell
     const piece = boardState[row][col];
 
-    // Must be your own monster
     if (!piece || piece.player !== myPlayerIndex) {
         setStatus('No monster there, or not yours!');
         return;
     }
 
-    // Cannot move a monster placed this turn
     if (placedThisTurn && piece.placedThisTurn) {
         setStatus('Cannot move a monster placed this turn!');
         return;
     }
 
-    // Cannot move a monster already moved this turn
     if (movedThisTurn.some(m => m.row === row && m.col === col)) {
         setStatus('Already moved that monster this turn!');
         return;
     }
 
-    // Select it and highlight valid moves
     selectedCell = { row, col };
     highlightValidMoves(row, col);
     setStatus(`Selected ${piece.type} at (${row},${col}) - click a highlighted cell to move`);
 }
 
+// =====================================================================
+// MONSTER PLACEMENT
+// Only allowed on the player's own edge row (row 0 for player 0,
+// row 9 for player 1). One placement per turn. Maximum 10 monsters
+// on the board at once.
+// =====================================================================
 function selectMonster(type) {
-    // Cant place if already placed one this turn
     if (placedThisTurn && type !== null) {
         setStatus('You already placed a monster this turn!');
         return;
     }
     selectedMonster = type;
-
     if (type) {
         setStatus(`Selected ${type} - click your edge to place it`);
     } else {
@@ -229,30 +255,28 @@ function placeMonster(row, col) {
         return;
     }
 
-    // Count how many monsters this player currently has on the board
+    // Count existing monsters to enforce the 10-monster cap
     let monsterCount = 0;
     for (let r = 0; r < 10; r++) {
         for (let c = 0; c < 10; c++) {
             const cell = boardState[r][c];
-            if (cell && cell.player === myPlayerIndex) {
-                monsterCount++;
-            }
+            if (cell && cell.player === myPlayerIndex) monsterCount++;
         }
     }
 
-    // Maximum 10 monsters on the board at once
     if (monsterCount >= 10) {
         setStatus('You already have 10 monsters on the board!');
         return;
     }
 
+    // Update local board state and re-render the cell immediately
     boardState[row][col] = { type: selectedMonster, player: myPlayerIndex };
     renderCell(row, col);
 
+    // Notify the server so its authoritative board state stays in sync
     socket.emit('placeMonster', {
         gameId: currentGameId,
-        row,
-        col,
+        row, col,
         type: selectedMonster,
         playerIndex: myPlayerIndex
     });
@@ -264,54 +288,30 @@ function placeMonster(row, col) {
     checkAndLockIfNoMoves();
 }
 
-// Update a single cell on the board visually
-function renderCell(row, col) {
-    // Find the cell div using its data attributes
-    const cell = document.querySelector(
-        `.cell[data-row="${row}"][data-col="${col}"]`
-    );
-    if (!cell) return;
-
-    const content = boardState[row][col];
-    if (content) {
-        // Show monster emoji with a colour indicator for which player owns it
-        cell.textContent = MONSTERS[content.type];
-        cell.style.backgroundColor = content.player === 0 
-            ? 'rgba(255,0,0,0.3)' 
-            : 'rgba(0,0,255,0.3)';
-    } else {
-        // Empty cell - restore edge colour or clear it
-        cell.textContent = '';
-        cell.style.backgroundColor = '';
-        if (row === 0) cell.classList.add('player1-edge');
-        if (row === 9) cell.classList.add('player2-edge');
-    }
-}
-
-// Helper to update status text
-function setStatus(msg) {
-    document.getElementById('statusText').textContent = msg;
-}
-
-
+// =====================================================================
+// MOVEMENT VALIDATION
+// Computes all squares a given monster can legally reach this turn.
+// Rules:
+//   - Horizontal/vertical: unlimited range
+//   - Diagonal: max 2 squares
+//   - Can pass through own monsters but not land on them
+//   - Cannot enter the opponent's starting edge row
+//   - Stops (and can land) when reaching an enemy monster
+// =====================================================================
 function getValidMoves(fromRow, fromCol) {
     const validMoves = [];
     const piece = boardState[fromRow][fromCol];
-
-    // Define which row is off limits for this player
-    // Player 0 cannot move to row 9 (opponent's edge)
-    // Player 1 cannot move to row 0 (opponent's edge)
     const forbiddenRow = piece.player === 0 ? 9 : 0;
 
     const directions = [
-        { dr: 0, dc: 1, diagonal: false },
-        { dr: 0, dc: -1, diagonal: false },
-        { dr: 1, dc: 0, diagonal: false },
-        { dr: -1, dc: 0, diagonal: false },
-        { dr: 1, dc: 1, diagonal: true },
-        { dr: 1, dc: -1, diagonal: true },
-        { dr: -1, dc: 1, diagonal: true },
-        { dr: -1, dc: -1, diagonal: true },
+        { dr: 0,  dc: 1,  diagonal: false },
+        { dr: 0,  dc: -1, diagonal: false },
+        { dr: 1,  dc: 0,  diagonal: false },
+        { dr: -1, dc: 0,  diagonal: false },
+        { dr: 1,  dc: 1,  diagonal: true  },
+        { dr: 1,  dc: -1, diagonal: true  },
+        { dr: -1, dc: 1,  diagonal: true  },
+        { dr: -1, dc: -1, diagonal: true  },
     ];
 
     for (const dir of directions) {
@@ -321,20 +321,17 @@ function getValidMoves(fromRow, fromCol) {
             const newRow = fromRow + dir.dr * step;
             const newCol = fromCol + dir.dc * step;
 
-            // Stop if out of bounds
             if (newRow < 0 || newRow > 9 || newCol < 0 || newCol > 9) break;
-
-            // Cannot move to opponent's edge row
             if (newRow === forbiddenRow) break;
 
             const cellContent = boardState[newRow][newCol];
 
             if (cellContent) {
                 if (cellContent.player === piece.player) {
-                    continue; // Can move through own monsters
+                    continue; // Pass through own monsters
                 } else {
-                    validMoves.push({ row: newRow, col: newCol });
-                    break;
+                    validMoves.push({ row: newRow, col: newCol }); // Can land on enemy
+                    break; // Cannot pass through enemy
                 }
             }
 
@@ -346,14 +343,10 @@ function getValidMoves(fromRow, fromCol) {
 }
 
 function highlightValidMoves(row, col) {
-    // Clear any existing highlights first
     clearHighlights();
-
-    // Highlight the selected monster's cell
     const selectedEl = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
     if (selectedEl) selectedEl.classList.add('selected');
 
-    // Highlight all valid destination cells
     const moves = getValidMoves(row, col);
     for (const move of moves) {
         const cell = document.querySelector(`.cell[data-row="${move.row}"][data-col="${move.col}"]`);
@@ -362,13 +355,13 @@ function highlightValidMoves(row, col) {
 }
 
 function clearHighlights() {
-    // Remove all highlight classes from the board
     document.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
     document.querySelectorAll('.valid-move').forEach(el => el.classList.remove('valid-move'));
 }
 
+// Validates and executes a move from one cell to another.
+// Updates local state optimistically, then syncs to server.
 function tryMove(fromRow, fromCol, toRow, toCol) {
-    // Check the destination is actually a valid move
     const validMoves = getValidMoves(fromRow, fromCol);
     const isValid = validMoves.some(m => m.row === toRow && m.col === toCol);
 
@@ -379,23 +372,18 @@ function tryMove(fromRow, fromCol, toRow, toCol) {
         return;
     }
 
-    // Move the monster in local board state
     const piece = boardState[fromRow][fromCol];
     boardState[fromRow][fromCol] = null;
     boardState[toRow][toCol] = piece;
 
-    // Re-render both cells
     renderCell(fromRow, fromCol);
     renderCell(toRow, toCol);
 
-    // Track this monster as moved this turn
     movedThisTurn.push({ row: toRow, col: toCol });
 
-    // Tell the server about the move
     socket.emit('moveMonster', {
         gameId: currentGameId,
-        fromRow, fromCol,
-        toRow, toCol,
+        fromRow, fromCol, toRow, toCol,
         playerIndex: myPlayerIndex
     });
 
@@ -406,7 +394,13 @@ function tryMove(fromRow, fromCol, toRow, toCol) {
     checkAndLockIfNoMoves();
 }
 
-
+// =====================================================================
+// END TURN
+// Locks the player's controls and tells the server the turn is done.
+// The server will not advance the round until both players have called
+// this (barrier pattern). The board unlocks again when 'newRound' or
+// 'gameOver' is received.
+// =====================================================================
 function endTurn() {
     if (myTurnEnded) {
         setStatus('You already ended your turn, waiting for opponent...');
@@ -426,29 +420,29 @@ function endTurn() {
     setStatus('Turn ended - waiting for opponent...');
 }
 
-// Server tells us both players have ended their turn - new round begins
+// =====================================================================
+// ROUND RESOLUTION EVENTS
+// =====================================================================
+
+// Received when both players have ended their turn and combat is resolved.
+// The server sends the authoritative post-combat board state.
 socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesPlayed }) => {
     myTurnEnded = false;
     roundNumber++;
 
     setControlsLocked(false);
-    boardState = serverBoard;
 
+    // Replace local board with the server's resolved board
+    boardState = serverBoard;
     for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
             renderCell(row, col);
         }
     }
 
-    if (losses) {
-        updateScoreboard(losses);
-    }
+    if (losses) updateScoreboard(losses);
+    if (totalGamesPlayed !== undefined) updateStatsDisplay(totalGamesPlayed, null);
 
-    if (totalGamesPlayed !== undefined) {
-        updateStatsDisplay(totalGamesPlayed, null);
-    }
-
-    // Update combat log with this round's fights
     if (combatLog && combatLog.length > 0) {
         updateCombatLog(combatLog, roundNumber);
         setStatus(`⚔️ Round ${roundNumber} combat resolved!`);
@@ -456,6 +450,7 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesP
         setStatus(`Round ${roundNumber + 1} started! Place or move your monsters.`);
     }
 
+    // Reset per-turn tracking for the new round
     placedThisTurn = false;
     movedThisTurn = [];
     selectedCell = null;
@@ -464,10 +459,10 @@ socket.on('newRound', ({ boardState: serverBoard, combatLog, losses, totalGamesP
     checkAndLockIfNoMoves();
 });
 
+// Received when a player reaches 10 losses or forfeits
 socket.on('gameOver', ({ winner, losses, totalGamesPlayed, playerStats }) => {
     updateScoreboard(losses);
 
-    // Update stats with final numbers
     const myStats = playerStats[myPlayerIndex];
     updateStatsDisplay(totalGamesPlayed, myStats);
 
@@ -480,16 +475,17 @@ socket.on('gameOver', ({ winner, losses, totalGamesPlayed, playerStats }) => {
     }
 
     document.querySelectorAll('#controls button').forEach(btn => btn.disabled = true);
-
     document.getElementById('post-game').style.display = 'block';
 });
 
+// =====================================================================
+// STATS DISPLAY
+// =====================================================================
+
 function updateStatsDisplay(totalGamesPlayed, myStats) {
-    // Update in game stats bar
     if (document.getElementById('total-games')) {
         document.getElementById('total-games').textContent = totalGamesPlayed;
     }
-    // Update lobby stats too
     if (document.getElementById('lobby-total-games')) {
         document.getElementById('lobby-total-games').textContent = totalGamesPlayed;
     }
@@ -499,17 +495,16 @@ function updateStatsDisplay(totalGamesPlayed, myStats) {
     }
 }
 
-// Receives stats when joining or creating a game
+// Received when joining/creating a game to show current stats immediately
 socket.on('statsUpdate', ({ totalGamesPlayed, myStats }) => {
     updateStatsDisplay(totalGamesPlayed, myStats);
 });
 
+// Received whenever the lobby state changes (player count, open games list)
 socket.on('lobbyUpdate', ({ onlineUsers, openGames }) => {
-    // Update online user count
     const onlineEl = document.getElementById('online-users');
     if (onlineEl) onlineEl.textContent = onlineUsers;
 
-    // Update open games list
     const listEl = document.getElementById('open-games-list');
     if (!listEl) return;
 
@@ -518,7 +513,6 @@ socket.on('lobbyUpdate', ({ onlineUsers, openGames }) => {
         return;
     }
 
-    // Build a list item for each open game with a quick join button
     listEl.innerHTML = openGames.map(game => `
         <li>
             🎮 ${game.host}'s game 
@@ -528,38 +522,16 @@ socket.on('lobbyUpdate', ({ onlineUsers, openGames }) => {
     `).join('');
 });
 
+// Join a game directly from the open games list in the lobby
 function quickJoin(gameId) {
     const name = document.getElementById('playerName').value;
     if (!name) return alert('Enter your name first!');
     socket.emit('joinGame', { playerName: name, gameId });
 }
 
-function backToLobby() {
-    // Tell the server this player is leaving
-    if (currentGameId) {
-        socket.emit('leaveGame', { gameId: currentGameId, playerIndex: myPlayerIndex });
-    }
-
-    // Reset all game state
-    currentGameId = null;
-    myPlayerIndex = null;
-    selectedMonster = null;
-    selectedCell = null;
-    placedThisTurn = false;
-    myTurnEnded = false;
-    movedThisTurn = [];
-    boardState = Array.from({ length: 10 }, () => Array(10).fill(null));
-
-    // Hide post game options
-    document.getElementById('post-game').style.display = 'none';
-
-    // Re-enable all buttons
-    document.querySelectorAll('#controls button').forEach(btn => btn.disabled = false);
-
-    // Switch views
-    document.getElementById('game').style.display = 'none';
-    document.getElementById('lobby').style.display = 'block';
-}
+// =====================================================================
+// SCOREBOARD
+// =====================================================================
 
 function updateScoreboard(losses) {
     const l0 = losses ? losses[0] : 0;
@@ -567,29 +539,26 @@ function updateScoreboard(losses) {
     document.getElementById('losses-0').textContent = l0;
     document.getElementById('losses-1').textContent = l1;
 
-    // Update labels with actual names
     const p0label = document.querySelector('#scoreboard p:first-child');
     const p1label = document.querySelector('#scoreboard p:last-child');
     if (p0label) p0label.innerHTML = `🔴 ${playerNames[0]} losses: <span id="losses-0">${l0}</span>/10`;
     if (p1label) p1label.innerHTML = `🔵 ${playerNames[1]} losses: <span id="losses-1">${l1}</span>/10`;
 }
 
+// =====================================================================
+// MOVE AVAILABILITY CHECK
+// After each placement or move, check whether the player has any moves
+// left. If not (and they have already placed), auto-lock controls and
+// prompt them to end their turn.
+// =====================================================================
+
 function hasAnyValidMoves() {
-    // Check every cell on the board
     for (let row = 0; row < 10; row++) {
         for (let col = 0; col < 10; col++) {
             const piece = boardState[row][col];
-
-            // Only check our own monsters
             if (!piece || piece.player !== myPlayerIndex) continue;
-
-            // Skip monsters already moved this turn
             if (movedThisTurn.some(m => m.row === row && m.col === col)) continue;
-
-            // Skip monster placed this turn
             if (placedThisTurn && piece.placedThisTurn) continue;
-
-            // If this monster has at least one valid move, we're not stuck
             if (getValidMoves(row, col).length > 0) return true;
         }
     }
@@ -597,36 +566,47 @@ function hasAnyValidMoves() {
 }
 
 function checkAndLockIfNoMoves() {
-// Count how many monsters this player has on the board
-    let monsterCount = 0;
-    for (let r = 0; r < 10; r++) {
-        for (let c = 0; c < 10; c++) {
-            const cell = boardState[r][c];
-            if (cell && cell.player === myPlayerIndex) monsterCount++;
-        }
-    }
-
-    if (!placedThisTurn) return;
+    if (!placedThisTurn) return; // Still need to place before locking
 
     if (!hasAnyValidMoves()) {
-        // Disable monster selection and board clicks
-        document.querySelectorAll('#controls button:not([onclick="endTurn()"])' +
-            ':not([onclick="backToLobby()"])').forEach(btn => btn.disabled = true);
+        document.querySelectorAll(
+            '#controls button:not([onclick="endTurn()"]):not([onclick="backToLobby()"])'
+        ).forEach(btn => btn.disabled = true);
         document.getElementById('board').style.pointerEvents = 'none';
         setStatus('No moves left - press End Turn!');
     }
 }
+
+// =====================================================================
+// GIVE UP / NAVIGATION
+// =====================================================================
 
 function giveUp() {
     if (!confirm('Are you sure you want to give up?')) return;
     socket.emit('giveUp', { gameId: currentGameId, playerIndex: myPlayerIndex });
 }
 
-function playAgain() {
-    // Save the player name before resetting
-    const savedName = playerNames[myPlayerIndex];
+function backToLobby() {
+    if (currentGameId) {
+        socket.emit('leaveGame', { gameId: currentGameId, playerIndex: myPlayerIndex });
+    }
+    resetGameState();
+    document.getElementById('game').style.display = 'none';
+    document.getElementById('lobby').style.display = 'block';
+}
 
-    // Reset all game state
+function playAgain() {
+    const savedName = playerNames[myPlayerIndex];
+    resetGameState();
+    document.getElementById('post-game').style.display = 'none';
+    document.querySelectorAll('#controls button').forEach(btn => btn.disabled = false);
+    document.getElementById('game').style.display = 'none';
+    document.getElementById('lobby').style.display = 'block';
+    document.getElementById('playerName').value = savedName;
+}
+
+// Centralised reset so backToLobby and playAgain stay DRY
+function resetGameState() {
     currentGameId = null;
     myPlayerIndex = null;
     selectedMonster = null;
@@ -635,25 +615,13 @@ function playAgain() {
     myTurnEnded = false;
     movedThisTurn = [];
     boardState = Array.from({ length: 10 }, () => Array(10).fill(null));
-
-    // Hide post game options
     document.getElementById('post-game').style.display = 'none';
-
-    // Re-enable all buttons
     document.querySelectorAll('#controls button').forEach(btn => btn.disabled = false);
-
-    // Switch to lobby
-    document.getElementById('game').style.display = 'none';
-    document.getElementById('lobby').style.display = 'block';
-
-    // Pre-fill their name so they can quickly start a new game
-    document.getElementById('playerName').value = savedName;
 }
 
-function toggleInstructions() {
-    const content = document.getElementById('instructions-content');
-    content.style.display = content.style.display === 'none' ? 'block' : 'none';
-}
+// =====================================================================
+// OPPONENT DISCONNECT
+// =====================================================================
 
 socket.on('opponentDisconnected', ({ winnerIndex, totalGamesPlayed, playerStats }) => {
     const myStats = playerStats[myPlayerIndex];
@@ -665,15 +633,16 @@ socket.on('opponentDisconnected', ({ winnerIndex, totalGamesPlayed, playerStats 
         setStatus('💀 You disconnected from the game.');
     }
 
-    // Disable all game controls
     document.querySelectorAll('#controls button').forEach(btn => btn.disabled = true);
-
-    // Show post game options
     document.getElementById('post-game').style.display = 'block';
 });
 
+// =====================================================================
+// GAME CODE DISPLAY
+// =====================================================================
+
+// Replaces the plain game code text with a copyable version after creation
 function showGameCode(gameId) {
-    // Show the game code prominently with a copy button
     const gameInfo = document.getElementById('gameInfo');
     gameInfo.innerHTML = `
         <br>Monster Mayhem
@@ -684,45 +653,48 @@ function showGameCode(gameId) {
 }
 
 function copyGameCode(gameId) {
-    // Copy the game code to clipboard
     navigator.clipboard.writeText(gameId).then(() => {
-        // Show confirmation message briefly
         const confirm = document.getElementById('copy-confirm');
         confirm.style.display = 'inline';
-        setTimeout(() => {
-            confirm.style.display = 'none';
-        }, 2000);
+        setTimeout(() => { confirm.style.display = 'none'; }, 2000);
     });
 }
 
+// =====================================================================
+// COMBAT LOG
+// Appends a round header and each fight result to the scrollable log.
+// =====================================================================
+
 function updateCombatLog(combatLog, roundNumber) {
     const list = document.getElementById('combat-log-list');
-    
     if (!combatLog || combatLog.length === 0) return;
 
-    // Add a round header
     const roundHeader = document.createElement('li');
     roundHeader.innerHTML = `<strong>--- Round ${roundNumber} ---</strong>`;
     roundHeader.classList.add('log-round-header');
     list.appendChild(roundHeader);
 
-    // Add each fight result
     for (const fight of combatLog) {
         const item = document.createElement('li');
-
         if (fight.removed === 'both') {
             item.textContent = `(${fight.row},${fight.col}) Both monsters destroyed!`;
         } else {
             item.textContent = `(${fight.row},${fight.col}) ${fight.survived} survived, ${fight.removed} removed!`;
         }
-
         list.appendChild(item);
     }
 
-    // Auto scroll to bottom of log
     list.scrollTop = list.scrollHeight;
 
-    // Remove the placeholder text if it's still there
     const placeholder = list.querySelector('.placeholder');
     if (placeholder) placeholder.remove();
+}
+
+// =====================================================================
+// MISC UI
+// =====================================================================
+
+function toggleInstructions() {
+    const content = document.getElementById('instructions-content');
+    content.style.display = content.style.display === 'none' ? 'block' : 'none';
 }

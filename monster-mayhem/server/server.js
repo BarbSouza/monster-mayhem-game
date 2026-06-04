@@ -9,41 +9,52 @@ const io = new Server(server);
 
 const PORT = 3000;
 
+// =====================================================================
+// SHARED STATE
+// All active games are stored here. Key = gameId, value = game object.
+// Multiple games can run simultaneously - each is fully isolated.
+// =====================================================================
 const games = {};
 
-// Global stats - shared across all games
+// Global stats persist for the lifetime of the server process.
+// playerStats is keyed by player name (not socket id) so stats
+// survive disconnects and reconnects.
 const stats = {
     totalGamesPlayed: 0,
-    // Player stats stored by socket id
-    playerStats: {}
+    playerStats: {}   // { [playerName]: { wins, losses, name } }
 };
 
-// Track connected users
+// Count of currently connected sockets (for lobby display)
 let onlineUsers = 0;
 
-// Combat resolution rules
-// Returns which monster survives, or null if both are removed
+// =====================================================================
+// COMBAT RESOLUTION
+// Rock-paper-scissors logic: vampire > werewolf > ghost > vampire.
+// Returns 'type1' if the first monster wins, 'type2' if the second wins,
+// or null if both are removed (same type clash).
+// =====================================================================
 function resolveCombat(type1, type2) {
-    // Same type - both removed
     if (type1 === type2) return null;
 
-    // Vampire beats werewolf
     if (type1 === 'vampire' && type2 === 'werewolf') return 'type1';
     if (type1 === 'werewolf' && type2 === 'vampire') return 'type2';
 
-    // Werewolf beats ghost
     if (type1 === 'werewolf' && type2 === 'ghost') return 'type1';
     if (type1 === 'ghost' && type2 === 'werewolf') return 'type2';
 
-    // Ghost beats vampire
     if (type1 === 'ghost' && type2 === 'vampire') return 'type1';
     if (type1 === 'vampire' && type2 === 'ghost') return 'type2';
 
     return null;
 }
 
-// Check the whole board for combat and resolve it
-// Returns a list of cells that were affected so clients can animate/log them
+// =====================================================================
+// BOARD SCAN: RESOLVE ALL COMBAT
+// Called once per round after both players have ended their turn.
+// Scans every cell; any cell with a .challenger field means two monsters
+// landed on the same square and need to be resolved.
+// Returns a combatLog array so clients can display what happened.
+// =====================================================================
 function resolveAllCombat(boardState) {
     const combatLog = [];
 
@@ -55,7 +66,7 @@ function resolveAllCombat(boardState) {
                 const winner = resolveCombat(cell.type, cell.challenger.type);
 
                 if (winner === 'type1') {
-                    // Original wins
+                    // Original occupant wins - remove the challenger
                     combatLog.push({
                         row, col,
                         removed: cell.challenger.type,
@@ -66,7 +77,7 @@ function resolveAllCombat(boardState) {
                     });
                     delete cell.challenger;
                 } else if (winner === 'type2') {
-                    // Challenger wins
+                    // Challenger wins - replace the original with the challenger
                     combatLog.push({
                         row, col,
                         removed: cell.type,
@@ -77,7 +88,7 @@ function resolveAllCombat(boardState) {
                     });
                     boardState[row][col] = cell.challenger;
                 } else {
-                    // Both removed
+                    // Same type - both removed
                     combatLog.push({
                         row, col,
                         removed: 'both',
@@ -94,13 +105,19 @@ function resolveAllCombat(boardState) {
     return combatLog;
 }
 
+// Serve the client files from the /client folder
 app.use(express.static(path.join(__dirname, '../client')));
 
+// =====================================================================
+// SOCKET.IO CONNECTION HANDLER
+// Each connected browser tab gets its own socket. All game logic is
+// driven by socket events emitted from the client.
+// =====================================================================
 io.on('connection', (socket) => {
     onlineUsers++;
     console.log('A user connected:', socket.id);
-    
-    // Send current lobby state to the newly connected user
+
+    // Send the new user the current lobby state immediately on connect
     socket.emit('lobbyUpdate', {
         onlineUsers,
         openGames: getOpenGames()
@@ -112,44 +129,38 @@ io.on('connection', (socket) => {
         openGames: getOpenGames()
     });
 
+    // =====================================================================
+    // DISCONNECT HANDLER
+    // If a player drops mid-game, award the win to their opponent and
+    // clean up the game entry. If they were still in the lobby (waiting),
+    // just remove the open game listing.
+    // =====================================================================
     socket.on('disconnect', () => {
         onlineUsers--;
         console.log('User disconnected:', socket.id);
 
-        // Check if this player was in an active game
         for (const gameId in games) {
             const game = games[gameId];
-
-            // Find which player index this socket was
             const playerIndex = game.players.findIndex(p => p.id === socket.id);
             if (playerIndex === -1) continue;
 
-            // Only handle active games - ignore waiting or finished
             if (game.status !== 'active') {
-                // If they were waiting for opponent, just remove the game
                 if (game.status === 'waiting') {
                     delete games[gameId];
-                    io.emit('lobbyUpdate', {
-                        onlineUsers,
-                        openGames: getOpenGames()
-                    });
+                    io.emit('lobbyUpdate', { onlineUsers, openGames: getOpenGames() });
                 }
                 continue;
             }
 
-            // The other player wins by default
+            // Award win to the surviving player
             const winnerIndex = playerIndex === 0 ? 1 : 0;
-
-            // Update stats
             stats.totalGamesPlayed += 1;
 
             for (let i = 0; i < game.players.length; i++) {
                 const playerName = game.players[i].name;
-
                 if (!stats.playerStats[playerName]) {
                     stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
                 }
-
                 if (i === winnerIndex) {
                     stats.playerStats[playerName].wins += 1;
                 } else {
@@ -157,7 +168,6 @@ io.on('connection', (socket) => {
                 }
             }
 
-            // Notify the remaining player
             io.to(gameId).emit('opponentDisconnected', {
                 winnerIndex,
                 totalGamesPlayed: stats.totalGamesPlayed,
@@ -171,14 +181,10 @@ io.on('connection', (socket) => {
             console.log(`Player ${playerIndex} disconnected from game ${gameId} - Player ${winnerIndex} wins!`);
         }
 
-        // Update lobby for everyone
-        io.emit('lobbyUpdate', {
-            onlineUsers,
-            openGames: getOpenGames()
-        });
+        io.emit('lobbyUpdate', { onlineUsers, openGames: getOpenGames() });
     });
 
-    // Returns list of games that are waiting for a second player
+    // Returns only games still waiting for a second player
     function getOpenGames() {
         return Object.entries(games)
             .filter(([id, game]) => game.status === 'waiting')
@@ -188,17 +194,22 @@ io.on('connection', (socket) => {
             }));
     }
 
+    // =====================================================================
+    // CREATE GAME
+    // Generates a collision-resistant 6-character alphanumeric game ID,
+    // initialises the game object, and joins the creator to a Socket.io
+    // room named after the gameId so future broadcasts are scoped.
+    // =====================================================================
     socket.on('createGame', ({ playerName }) => {
         const gameId = Math.random().toString(36).substr(2, 6).toUpperCase();
         games[gameId] = {
             players: [{ id: socket.id, name: playerName }],
             status: 'waiting',
             boardState: Array.from({ length: 10 }, () => Array(10).fill(null)),
-            turnEnded: [],
-            losses: [0, 0]
+            turnEnded: [],   // Tracks which players have submitted their turn this round
+            losses: [0, 0]   // Monster removal count per player; game ends at 10
         };
 
-    // Initialise stats by player name instead of socket id
         if (!stats.playerStats[playerName]) {
             stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
         }
@@ -214,23 +225,24 @@ io.on('connection', (socket) => {
 
         console.log(`Game ${gameId} created by ${playerName}`);
 
-        // Tell everyone about the new open game
-        io.emit('lobbyUpdate', {
-            onlineUsers,
-            openGames: getOpenGames()
-        });
+        io.emit('lobbyUpdate', { onlineUsers, openGames: getOpenGames() });
     });
 
+    // =====================================================================
+    // JOIN GAME
+    // Second player joins by game code. Once both players are in, the game
+    // status changes to 'active' and both clients are notified to unlock
+    // their controls and start playing.
+    // =====================================================================
     socket.on('joinGame', ({ playerName, gameId }) => {
         const game = games[gameId];
         if (!game) return socket.emit('error', 'Game not found!');
         if (game.status !== 'waiting') return socket.emit('error', 'Game already started!');
-        
+
         game.players.push({ id: socket.id, name: playerName });
         socket.join(gameId);
         game.status = 'active';
 
-        // Initialise stats for both players by name
         for (const player of game.players) {
             if (!stats.playerStats[player.name]) {
                 stats.playerStats[player.name] = { wins: 0, losses: 0, name: player.name };
@@ -248,13 +260,16 @@ io.on('connection', (socket) => {
 
         console.log(`${playerName} joined game ${gameId}`);
 
-        // Tell everyone this game is no longer open
-        io.emit('lobbyUpdate', {
-            onlineUsers,
-            openGames: getOpenGames()
-        });
+        io.emit('lobbyUpdate', { onlineUsers, openGames: getOpenGames() });
     });
 
+    // =====================================================================
+    // PLACE MONSTER
+    // The client validates placement locally before emitting this event,
+    // but the server still applies it to the authoritative board state.
+    // If an enemy monster is already on the target square, the new piece
+    // is stored as a .challenger - combat resolves at end of round.
+    // =====================================================================
     socket.on('placeMonster', ({ gameId, row, col, type, playerIndex }) => {
         const game = games[gameId];
         if (!game) return;
@@ -263,11 +278,8 @@ io.on('connection', (socket) => {
         const piece = { type, player: playerIndex };
 
         if (targetCell && targetCell.player !== playerIndex) {
-            // Enemy already on this square - store as challenger
-            game.boardState[row][col] = {
-                ...targetCell,
-                challenger: piece
-            };
+            // Conflict - store as challenger; resolved when round ends
+            game.boardState[row][col] = { ...targetCell, challenger: piece };
         } else {
             game.boardState[row][col] = piece;
         }
@@ -275,34 +287,35 @@ io.on('connection', (socket) => {
         console.log(`Player ${playerIndex} placed ${type} at (${row}, ${col})`);
     });
 
+    // =====================================================================
+    // MOVE MONSTER
+    // Updates the server's authoritative board state. The piece may be the
+    // main occupant of a cell or a challenger stored within it - the server
+    // checks both cases. Landing on an enemy square stores the moving piece
+    // as a challenger; combat resolves at end of round.
+    // =====================================================================
     socket.on('moveMonster', ({ gameId, fromRow, fromCol, toRow, toCol, playerIndex }) => {
         const game = games[gameId];
         if (!game) return;
 
-        // Get the piece that is moving
-        // It might be stored as the main piece or as the challenger
         let piece = null;
-
         const fromCell = game.boardState[fromRow][fromCol];
 
         if (fromCell && fromCell.player === playerIndex) {
-            // The main piece belongs to this player - take it
+            // Main occupant belongs to this player
             piece = { type: fromCell.type, player: fromCell.player };
-
             if (fromCell.challenger) {
-                // There was a challenger waiting here - leave the challenger behind
+                // Leave the challenger behind in the source cell
                 game.boardState[fromRow][fromCol] = fromCell.challenger;
             } else {
                 game.boardState[fromRow][fromCol] = null;
             }
         } else if (fromCell && fromCell.challenger && fromCell.challenger.player === playerIndex) {
-            // The challenger belongs to this player - extract it
+            // This player's piece is the challenger in the source cell
             piece = fromCell.challenger;
-            // Remove the challenger, leave the original
             delete game.boardState[fromRow][fromCol].challenger;
         } else {
-            // Piece not found - ignore
-            return;
+            return; // Piece not found - ignore stale event
         }
 
         const targetCell = game.boardState[toRow][toCol];
@@ -311,11 +324,10 @@ io.on('connection', (socket) => {
             game.boardState[toRow][toCol] = piece;
         } else if (targetCell.player !== piece.player) {
             if (!targetCell.challenger) {
-                game.boardState[toRow][toCol] = {
-                    ...targetCell,
-                    challenger: piece
-                };
+                // First conflict on this square - store as challenger
+                game.boardState[toRow][toCol] = { ...targetCell, challenger: piece };
             } else {
+                // Edge case: challenger slot already taken - overwrite
                 game.boardState[toRow][toCol] = piece;
             }
         } else {
@@ -325,34 +337,51 @@ io.on('connection', (socket) => {
         console.log(`Player ${playerIndex} moved from (${fromRow},${fromCol}) to (${toRow},${toCol})`);
     });
 
+    // =====================================================================
+    // END TURN (BARRIER / LATCH PATTERN)
+    // This is the core concurrency mechanism. Each player's turn runs
+    // independently and simultaneously. The server collects 'endTurn'
+    // events in the game.turnEnded array.
+    //
+    // The barrier fires only when ALL players have submitted - i.e.
+    // game.turnEnded.length === game.players.length. Until that condition
+    // is met, the round does not advance and neither player can see the
+    // other's moves. This guarantees simultaneous turn resolution.
+    //
+    // Once the barrier fires:
+    //   1. Combat is resolved on the authoritative server board state
+    //   2. Losses are counted
+    //   3. Elimination is checked
+    //   4. The resolved board is broadcast to all clients (newRound / gameOver)
+    //   5. turnEnded is reset for the next round
+    // =====================================================================
     socket.on('endTurn', ({ gameId, playerIndex }) => {
         const game = games[gameId];
         if (!game) return;
 
         if (!game.turnEnded) game.turnEnded = [];
 
+        // Guard against duplicate endTurn events from the same player
         if (!game.turnEnded.includes(playerIndex)) {
             game.turnEnded.push(playerIndex);
         }
 
         console.log(`Player ${playerIndex} ended their turn in game ${gameId}`);
 
+        // Barrier check - only proceed when all players are ready
         if (game.turnEnded.length === game.players.length) {
-            game.turnEnded = [];
+            game.turnEnded = []; // Reset for next round
 
-            // Resolve combat
+            // Resolve all monster conflicts on the board
             const combatLog = resolveAllCombat(game.boardState);
 
-            // Count losses from combat log
+            // Tally losses from this round's combat
             for (const fight of combatLog) {
                 if (fight.removed === 'both') {
-                    // Both players lose a monster
                     game.losses[fight.player] += 1;
-                    // The challenger's player also loses one
                     game.losses[fight.challengerPlayer] += 1;
                 } else {
-                    // The loser's player loses a monster
-                    const losingPlayer = fight.player === fight.survivorPlayer 
+                    const losingPlayer = fight.player === fight.survivorPlayer
                         ? (fight.player === 0 ? 1 : 0)
                         : fight.player;
                     game.losses[losingPlayer] += 1;
@@ -361,7 +390,7 @@ io.on('connection', (socket) => {
 
             console.log(`Losses - Player 0: ${game.losses[0]}, Player 1: ${game.losses[1]}`);
 
-            // Check for elimination
+            // Check for elimination (10 monsters removed = out)
             const eliminated = [];
             for (let i = 0; i < game.players.length; i++) {
                 if (game.losses[i] >= 10) {
@@ -370,15 +399,12 @@ io.on('connection', (socket) => {
                 }
             }
 
-            // Check for a winner - if only one player is not eliminated
             const activePlayers = game.players.filter((_, i) => !eliminated.includes(i));
 
-            // All players eliminated at the same time - it's a tie!
+            // Tie: all players eliminated in the same round
             if (activePlayers.length === 0) {
                 stats.totalGamesPlayed += 1;
-
                 console.log(`Game ${gameId} ended in a tie!`);
-
                 io.to(gameId).emit('gameOver', {
                     winner: null,
                     losses: game.losses,
@@ -388,27 +414,20 @@ io.on('connection', (socket) => {
                         1: stats.playerStats[game.players[1].name]
                     }
                 });
-
                 game.status = 'finished';
                 return;
             }
 
+            // One player remaining - they win
             if (activePlayers.length === 1) {
                 const winnerIndex = game.players.indexOf(activePlayers[0]);
-                
                 stats.totalGamesPlayed += 1;
 
                 for (let i = 0; i < game.players.length; i++) {
                     const playerName = game.players[i].name;
-
                     if (!stats.playerStats[playerName]) {
-                        stats.playerStats[playerName] = { 
-                            wins: 0, 
-                            losses: 0, 
-                            name: playerName
-                        };
+                        stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
                     }
-
                     if (i === winnerIndex) {
                         stats.playerStats[playerName].wins += 1;
                     } else {
@@ -417,8 +436,7 @@ io.on('connection', (socket) => {
                 }
 
                 console.log(`Total games played: ${stats.totalGamesPlayed}`);
-
-                io.to(gameId).emit('gameOver', { 
+                io.to(gameId).emit('gameOver', {
                     winner: winnerIndex,
                     losses: game.losses,
                     totalGamesPlayed: stats.totalGamesPlayed,
@@ -427,14 +445,13 @@ io.on('connection', (socket) => {
                         1: stats.playerStats[game.players[1].name]
                     }
                 });
-
                 game.status = 'finished';
                 console.log(`Player ${winnerIndex} wins game ${gameId}!`);
                 return;
             }
 
-            // Also send updated stats with every new round
-            io.to(gameId).emit('newRound', { 
+            // Game continues - broadcast the resolved board to both clients
+            io.to(gameId).emit('newRound', {
                 boardState: game.boardState,
                 combatLog,
                 losses: game.losses,
@@ -445,28 +462,28 @@ io.on('connection', (socket) => {
         }
     });
 
+    // =====================================================================
+    // GIVE UP
+    // Immediate forfeit - awards the win to the opponent and ends the game.
+    // =====================================================================
     socket.on('giveUp', ({ gameId, playerIndex }) => {
-    const game = games[gameId];
-    if (!game) return;
+        const game = games[gameId];
+        if (!game) return;
 
-    // The player who gave up loses, the other player wins
-    const winnerIndex = playerIndex === 0 ? 1 : 0;
-
-    stats.totalGamesPlayed += 1;
+        const winnerIndex = playerIndex === 0 ? 1 : 0;
+        stats.totalGamesPlayed += 1;
 
         for (let i = 0; i < game.players.length; i++) {
             const playerName = game.players[i].name;
-
             if (!stats.playerStats[playerName]) {
                 stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
             }
-
             if (i === winnerIndex) {
                 stats.playerStats[playerName].wins += 1;
             } else {
                 stats.playerStats[playerName].losses += 1;
             }
-        } 
+        }
 
         io.to(gameId).emit('gameOver', {
             winner: winnerIndex,
@@ -480,36 +497,33 @@ io.on('connection', (socket) => {
 
         game.status = 'finished';
         console.log(`Player ${playerIndex} gave up in game ${gameId}!`);
-    }); 
+    });
 
-        socket.on('leaveGame', ({ gameId, playerIndex }) => {
+    // =====================================================================
+    // LEAVE GAME (voluntary - e.g. Back to Lobby button)
+    // If the game was waiting, cancel it. If active, award the win to the
+    // opponent (same outcome as a disconnect but triggered intentionally).
+    // =====================================================================
+    socket.on('leaveGame', ({ gameId, playerIndex }) => {
         const game = games[gameId];
         if (!game) return;
 
-        // If game was still waiting, just delete it
         if (game.status === 'waiting') {
             delete games[gameId];
             console.log(`Game ${gameId} cancelled - host left`);
-            io.emit('lobbyUpdate', {
-                onlineUsers,
-                openGames: getOpenGames()
-            });
+            io.emit('lobbyUpdate', { onlineUsers, openGames: getOpenGames() });
             return;
         }
 
-        // If game was active, the other player wins
         if (game.status === 'active') {
             const winnerIndex = playerIndex === 0 ? 1 : 0;
-
             stats.totalGamesPlayed += 1;
 
             for (let i = 0; i < game.players.length; i++) {
                 const playerName = game.players[i].name;
-
                 if (!stats.playerStats[playerName]) {
                     stats.playerStats[playerName] = { wins: 0, losses: 0, name: playerName };
                 }
-
                 if (i === winnerIndex) {
                     stats.playerStats[playerName].wins += 1;
                 } else {
@@ -517,7 +531,6 @@ io.on('connection', (socket) => {
                 }
             }
 
-            // Notify the remaining player
             io.to(gameId).emit('opponentDisconnected', {
                 winnerIndex,
                 totalGamesPlayed: stats.totalGamesPlayed,
@@ -531,11 +544,7 @@ io.on('connection', (socket) => {
             console.log(`Player ${playerIndex} left game ${gameId} - Player ${winnerIndex} wins!`);
         }
 
-        // Update lobby for everyone
-        io.emit('lobbyUpdate', {
-            onlineUsers,
-            openGames: getOpenGames()
-        });
+        io.emit('lobbyUpdate', { onlineUsers, openGames: getOpenGames() });
     });
 
 });

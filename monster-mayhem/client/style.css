@@ -1,6 +1,5 @@
 /* =====================
-   MONSTER MAYHEM - THEME
-   Dark horror with amber accents
+   MONSTER MAYHEM 
    ===================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Creepster&family=Nunito:wght@400;600;700&display=swap');
@@ -101,7 +100,6 @@ button:disabled {
     transform: none;
 }
 
-/* Special buttons */
 button[onclick="endTurn()"] {
     border-color: var(--green);
     color: var(--green);
@@ -385,7 +383,6 @@ input[type="text"]::placeholder {
     color: var(--text);
 }
 
-/* RIGHT BOARD AREA */
 #game-board-area {
     flex: 1;
 }
